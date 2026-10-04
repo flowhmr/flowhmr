@@ -1,0 +1,16 @@
+[submodule "third_party/PerpetualHumanoidControl"]
+	path = third_party/PerpetualHumanoidControl
+	url = https://github.com/ZhengyiLuo/PerpetualHumanoidControl.git
+	shallow = true
+[submodule "third_party/vggt-omega"]
+	path = third_party/vggt-omega
+	url = https://github.com/facebookresearch/vggt-omega.git
+	shallow = true
+[submodule "third_party/YOLOX"]
+	path = third_party/YOLOX
+	url = https://github.com/Megvii-BaseDetection/YOLOX.git
+	shallow = true
+[submodule "third_party/sam-3d-body"]
+	path = third_party/sam-3d-body
+	url = https://github.com/facebookresearch/sam-3d-body.git
+	shallow = true

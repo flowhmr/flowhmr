@@ -1,0 +1,21 @@
+Copyright 2025-2026 FlowHMR authors. All Rights Reserved.
+
+For more information see <https://github.com/flowhmr/flowhmr>
+If you use this software, please cite the corresponding publications
+listed on the above website.
+
+Permission to use, copy, modify and distribute this software and its
+documentation for educational, research and non-profit purposes only.
+Any work that uses or modifies code from this repository must state that
+the code originates from FlowHMR (https://github.com/flowhmr/flowhmr), and
+is prohibited for commercial use.
+You must retain, in the source form of any derivative works that you
+distribute, all copyright, patent, trademark, and attribution notices
+from the source form of this work.
+
+For commercial uses of this software, please contact the authors.
+
+Exceptions:
+- data/rendering_data/ (motion rendering toolkit) is licensed under the
+  Apache License 2.0; see data/rendering_data/LICENSE.
+- Third-party components keep their original licenses; see third_party/.

@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FlowHMR Demo</title>
+<link rel="stylesheet" href="/static/style.css">
+<script type="importmap">
+  { "imports": {
+      "three": "/static/vendor/three/three.module.min.js",
+      "three/addons/controls/OrbitControls.js": "/static/vendor/three/OrbitControls.js"
+  } }
+</script>
+</head>
+<body>
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <span class="logo">FlowHMR</span>
+      <span class="tagline">Physically plausible motion capture from video</span>
+    </div>
+    <div class="model-info" id="modelInfo">connecting...</div>
+  </div>
+</header>
+
+<main class="workspace">
+  <!-- ============================================================ left: input & controls -->
+  <aside class="sidebar">
+    <!-- Video: upload + preview with person boxes -->
+    <section class="card">
+      <div class="card-head">
+        <h3 class="card-title">Video</h3>
+        <span class="preview-title" id="previewTitle"></span>
+      </div>
+      <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Choose a video">
+        <input type="file" id="fileInput" accept="video/*" hidden>
+        <svg viewBox="0 0 24 24" class="drop-icon" aria-hidden="true">
+          <path d="M7 16a4 4 0 01-.88-7.9A5 5 0 1115.9 6H16a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <p class="drop-title">Drop a video here, or click to browse</p>
+        <p class="drop-sub" id="uploadHint">MP4, MOV, AVI, MKV, WebM</p>
+      </div>
+      <div class="file-row hidden" id="fileRow">
+        <div class="file-info">
+          <span class="file-name" id="fileName"></span>
+          <span class="file-size" id="fileSize"></span>
+        </div>
+        <button type="button" class="link-btn danger" id="fileRemove">Remove</button>
+      </div>
+      <p class="error hidden" id="uploadError"></p>
+      <div class="preview-stage hidden" id="previewBox">
+        <video id="previewVideo" controls muted playsinline preload="auto"></video>
+        <canvas id="previewCanvas"></canvas>
+      </div>
+    </section>
+
+    <!-- Person selection (only while a job waits for it) -->
+    <section class="card hidden" id="personCard">
+      <h3 class="card-title" id="personTitle">Select the person</h3>
+      <p class="card-help" id="personCount"></p>
+      <div class="person-list" id="personList"></div>
+      <button type="button" class="btn-primary block" id="personConfirm" disabled>Confirm selection</button>
+      <p class="error hidden" id="personError"></p>
+      <button type="button" class="btn-secondary block rerun-btn hidden" id="personReselect"
+              title="Re-run detection and pick a different person in this video">Choose another person</button>
+    </section>
+
+    <!-- Settings -->
+    <section class="card">
+      <h3 class="card-title">Settings</h3>
+      <div class="setting-row">
+        <div>
+          <div class="setting-label">Manual person selection</div>
+          <div class="setting-help">Pause after detection when several people are found</div>
+        </div>
+        <button type="button" class="toggle" id="optManual" role="switch" aria-checked="true"><span class="toggle-knob"></span></button>
+      </div>
+      <div class="setting-row">
+        <div>
+          <div class="setting-label">Post-processing</div>
+          <div class="setting-help">Temporal smoothing + foot-contact IK cleanup</div>
+        </div>
+        <button type="button" class="toggle" id="optPostprocess" role="switch" aria-checked="false"><span class="toggle-knob"></span></button>
+      </div>
+      <div class="field-grid">
+        <label class="field">
+          <span>Seed</span>
+          <input class="input" id="optSeed" type="number" min="0" step="1" value="0">
+        </label>
+        <label class="field">
+          <span>CFG scale</span>
+          <input class="input" id="optCfg" type="number" min="0" max="10" step="0.1" value="1.0">
+        </label>
+        <label class="field">
+          <span>VGGT stride</span>
+          <input class="input" id="optVggt" type="number" min="1" max="120" step="1" value="1"
+                 title="Run VGGT-Omega on every N-th frame; use 10-30 for long videos or limited GPU memory">
+        </label>
+        <label class="field">
+          <span>Steps</span>
+          <input class="input" id="optSteps" type="number" min="1" max="100" step="1" value="20"
+                 title="Flow-matching ODE steps; more steps trade speed for quality">
+        </label>
+        <label class="field">
+          <span>Max frames</span>
+          <input class="input" id="optMaxFrames" type="number" min="30" max="10000" step="30" value="900"
+                 title="Maximum processed frames at 30 fps (900 = 30 seconds)">
+        </label>
+      </div>
+      <p class="setting-help settings-note">
+        Out of GPU memory or a long video? Raise <strong>VGGT stride</strong> to 10–30
+        (the camera is interpolated between sampled frames).
+      </p>
+      <button type="button" class="btn-primary block run-btn" id="btnSubmit" disabled>Run FlowHMR</button>
+    </section>
+
+    <!-- Pipeline -->
+    <section class="card hidden" id="jobCard">
+      <div class="card-head">
+        <h3 class="card-title">Pipeline</h3>
+        <span class="badge" id="jobBadge">queued</span>
+      </div>
+      <div class="job-line">
+        <span class="job-name" id="jobName"></span>
+        <span class="job-id mono" id="jobId"></span>
+      </div>
+      <div class="queue-box hidden" id="queueBox">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <div>
+          <div class="queue-title">In queue</div>
+          <div class="queue-text" id="queueText"></div>
+        </div>
+      </div>
+      <ol class="stages" id="stageList"></ol>
+      <p class="job-msg" id="jobMsg"></p>
+      <p class="error hidden" id="jobError"></p>
+      <button type="button" class="btn-secondary block rerun-btn hidden" id="btnRerun"
+              title="Run generation again with the current Settings (detection, camera and features are reused)">Re-run with current settings</button>
+    </section>
+
+    <!-- Recent runs -->
+    <section class="card">
+      <div class="card-head">
+        <h3 class="card-title">Recent runs</h3>
+        <button type="button" class="icon-btn" id="historyRefresh" title="Refresh">
+          <svg viewBox="0 0 24 24"><path d="M16.02 9.35h4.99M2.98 19.64v-4.99m0 0h4.99m-4.99 0l3.18 3.18a8.25 8.25 0 0013.8-3.7M4.03 9.87a8.25 8.25 0 0113.8-3.7l3.18 3.18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+      <p class="error hidden" id="historyError"></p>
+      <p class="empty-note" id="historyEmpty">No runs yet in this session</p>
+      <div class="runs" id="historyList"></div>
+    </section>
+  </aside>
+
+  <!-- ============================================================ right: 3D viewer -->
+  <section class="card viewer-card" id="resultCard">
+    <div class="card-head">
+      <h3 class="card-title">3D motion <span class="result-info" id="resultInfo"></span></h3>
+      <div class="downloads">
+        <a class="btn-secondary small hidden" id="dlFbx" href="#" download>FBX</a>
+        <a class="btn-primary small hidden" id="dlNpz" href="#" download title="SMPL-H motion: poses (T,52,3), trans (T,3), betas">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m0 0l-4-4m4 4l4-4M5 19h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Download motion (.npz)
+        </a>
+      </div>
+    </div>
+    <div class="viewer-wrap">
+      <div id="viewer"></div>
+      <div class="viewer-empty" id="viewerEmpty">Drop a video on the left to reconstruct its 3D motion</div>
+      <div class="viewer-tools hidden" id="viewerTools">
+        <label><input type="checkbox" id="optFollow" checked> Follow</label>
+        <label><input type="checkbox" id="optTrail" checked> Trajectory</label>
+        <label><input type="checkbox" id="optSync" checked> Sync video</label>
+        <button type="button" class="ghost" id="btnReset" title="Reset camera">Reset view</button>
+      </div>
+      <div class="viewer-hint">Drag to orbit · scroll to zoom · right-drag to pan · space play / pause · ← → step</div>
+    </div>
+    <div class="controls hidden" id="controls">
+      <button type="button" class="play" id="btnPlay" aria-label="Play/Pause">
+        <svg viewBox="0 0 24 24" id="iconPlay"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>
+        <svg viewBox="0 0 24 24" id="iconPause" class="hidden"><path d="M7 5h4v14H7zM13 5h4v14h-4z" fill="currentColor"/></svg>
+      </button>
+      <input type="range" id="scrub" min="0" max="0" value="0" step="1">
+      <div class="frame num" id="frameLabel">0 / 0</div>
+      <select id="speed" class="select" title="Playback speed">
+        <option value="0.25">0.25x</option>
+        <option value="0.5">0.5x</option>
+        <option value="1" selected>1x</option>
+        <option value="2">2x</option>
+      </select>
+    </div>
+  </section>
+</main>
+
+<script type="module" src="/static/js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# render outputs & logs
+logs/
+output/
+output_*/
+debug/
+debug_output/
+*.mp4
+!docs/*.mp4
+examples_output/
+
+# models & assets (downloaded separately, see README)
+body_models/
+assets/hdr_environments/
+assets/textures/
+assets/grounds/
+
+# Blender
+*.blend1
+*.blend2
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
+
+# fbx generated from npz by the pipeline
+examples/motions/*.fbx
+assets/floors/
+
+# Downloaded HDR environments (see README Quick start)
+examples/assets/hdr_environments/*.exr
+examples/assets/hdr_environments/*.hdr

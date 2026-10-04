@@ -1,0 +1,26 @@
+# V2M environment (training / inference / reconstruction eval)
+# Validated with python 3.10, torch 2.5.1+cu118
+--extra-index-url https://download.pytorch.org/whl/cu118
+torch==2.5.1+cu118
+torchvision==0.20.1+cu118
+accelerate==0.30.1
+torchdiffeq==0.2.5
+
+numpy>=1.24.0,<2.0
+scipy>=1.10.0
+transforms3d==0.4.2
+einops>=0.7
+opencv-python>=4.8
+matplotlib>=3.7
+PyYAML>=6.0
+omegaconf>=2.3
+tqdm
+joblib>=1.2
+imageio>=2.30
+webdataset>=0.2.80          # training data loader (WDSV2MTrainDatasetRaw)
+
+# Raw-video inference / web demo additionally needs tools/web/requirements.txt.
+
+# optional
+# diffusers>=0.24           # only for EMA (use_ema)
+# fbxsdkpy==2020.1.post2    # only for FBX export (py3.10 wheel; see docs/install.md for the extra index)

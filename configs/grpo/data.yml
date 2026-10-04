@@ -1,0 +1,27 @@
+# GRPO GT data: training samples with 3D GT motion, for the MPJPE + PHC tracking rewards.
+# Unlike video-only data (PCK reward), each sample provides video + 3D GT.
+#   reward = MPJPE(output, GT) + PHC+ tracking(output)
+# The tracking reward is 0 when the PHC simulation fails.
+
+train_dataset: flowhmr/datasets/v2m_generation/grpo_gt_dataset.V2MGRPOGTDataset
+train_dataset_args:
+  roots:
+  # Path to your GRPO sample list (one sample dir per line).
+  # Format: docs/resources.md#sample-list-grpo
+  - root: data/grpo_gt_pool/list.txt
+    feature_format: "{name}_sam3d_feat.pt"
+    bbox_format: "{name}_bbox.npz"
+  max_len: 180
+  load_hand: true
+  sample_step: 1
+
+val_dataset: flowhmr/datasets/v2m_generation/grpo_gt_dataset.V2MGRPOGTDataset
+val_dataset_args:
+  roots:
+  # Defaults to a subsample of the training list; point to a separate list for held-out validation.
+  - root: data/grpo_gt_pool/list.txt
+    feature_format: "{name}_sam3d_feat.pt"
+    bbox_format: "{name}_bbox.npz"
+  max_len: 180
+  load_hand: true
+  sample_step: 5000 # subsample the val set (~114 samples)

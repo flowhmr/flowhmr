@@ -1,0 +1,24 @@
+# Perception stack for raw-video inference (CLI + web demo). Install on top of ../requirements.txt:
+#   pip install -r requirements.txt -r tools/web/requirements.txt
+#   pip install --no-build-isolation --no-deps -e third_party/YOLOX
+flask>=3.0
+imageio-ffmpeg>=0.5        # bundled ffmpeg (used when no system ffmpeg is on PATH)
+
+# person detection + tracking (YOLOX runtime deps; YOLOX itself is installed with --no-deps)
+supervision>=0.25,<0.31    # ByteTrack is removed in 0.31
+loguru
+psutil
+tabulate
+pycocotools
+thop
+
+# SAM 3D Body / VGGT-Omega
+roma
+yacs
+timm
+omegaconf
+braceexpand
+pillow
+termcolor                  # DINOv3 hub code (SAM 3D Body backbone)
+pytorch-lightning>=2.0
+huggingface_hub>=0.30,<1.0

@@ -1,0 +1,75 @@
+diff --git a/phc/env/tasks/base_task.py b/phc/env/tasks/base_task.py
+index 4b4a787..205318b 100644
+--- a/phc/env/tasks/base_task.py
++++ b/phc/env/tasks/base_task.py
+@@ -63,7 +63,7 @@ class BaseTask():
+         self.headless = cfg["headless"]
+         if self.headless == False and not flags.no_virtual_display:
+             from pyvirtualdisplay.smartdisplay import SmartDisplay
+-            self.virtual_display = SmartDisplay(size=(1800, 990), visible=True)
++            self.virtual_display = SmartDisplay(size=(1800, 990), visible=False)
+             self.virtual_display.start()
+ 
+         self.gym = gymapi.acquire_gym()
+@@ -177,13 +177,27 @@ class BaseTask():
+         self.recorder_camera_handles = []
+         self.max_num_camera = 10
+         self.viewing_env_idx = 0
++        recorder_props = gymapi.CameraProperties()
++        if os.environ.get("PHC_AUTO_RECORD_PATH"):
++            recorder_props.width = int(os.environ.get("PHC_AUTO_RECORD_WIDTH", "640"))
++            recorder_props.height = int(os.environ.get("PHC_AUTO_RECORD_HEIGHT", "640"))
+         for idx, env in enumerate(self.envs):
+-            self.recorder_camera_handles.append(self.gym.create_camera_sensor(env, gymapi.CameraProperties()))
++            self.recorder_camera_handles.append(self.gym.create_camera_sensor(env, recorder_props))
+             if idx > self.max_num_camera:
+                 break
+ 
+         self.recorder_camera_handle = self.recorder_camera_handles[0]
+         self.recording, self.recording_state_change = False, False
++        # Only enabled when PHC_AUTO_RECORD_PATH is set; normal training/eval is unaffected.
++        self._auto_record_path = os.environ.get("PHC_AUTO_RECORD_PATH")
++        self._auto_record_frames = int(os.environ.get("PHC_AUTO_RECORD_FRAMES", "0"))
++        self._auto_record_count = 0
++        if self._auto_record_path:
++            os.makedirs(os.path.dirname(os.path.abspath(self._auto_record_path)), exist_ok=True)
++            self.recording = True
++            self.recording_state_change = True
++            flags.show_traj = os.environ.get("PHC_AUTO_SHOW_TRAJ", "1") != "0"
++            flags.follow = True
+         self.max_video_queue_size = 100000
+         self._video_queue = deque(maxlen=self.max_video_queue_size)
+         rendering_out = osp.join("output", "renderings")
+@@ -424,19 +438,26 @@ class BaseTask():
+                     else:
+                         img = self.virtual_display.grab()
+                         self.color_image = np.array(img)
+-                        H, W, C = self.color_image.shape
+-                        self.color_image = self.color_image[:(H - H % 2), :(W - W % 2), :]
++                        if self.color_image.ndim == 3:
++                            H, W, C = self.color_image.shape
++                            self.color_image = self.color_image[:(H - H % 2), :(W - W % 2), :]
+ 
+-                if not flags.server_mode:
++                if not flags.server_mode and getattr(self, "color_image", None) is not None and self.color_image.ndim == 3:
+                     if not "writer" in self.__dict__:
+                         curr_date_time = datetime.now().strftime('%Y-%m-%d-%H:%M:%S')
+-                        self.curr_video_file_name = self._video_path % curr_date_time
++                        self.curr_video_file_name = self._auto_record_path or (self._video_path % curr_date_time)
+                         self.curr_states_file_name = self._states_path % curr_date_time
+                         if not flags.server_mode:
+                             self.writer = imageio.get_writer(self.curr_video_file_name, fps=int(1/self.dt), macro_block_size=None)
+                     self.writer.append_data(self.color_image)
+-                    
+-                    
++                    self._auto_record_count += 1
++                    if (self._auto_record_path and self._auto_record_frames > 0
++                            and self._auto_record_count >= self._auto_record_frames):
++                        self.writer.close()
++                        del self.writer
++                        self.recording = False
++                        print(f"[auto-record] saved {self.curr_video_file_name} ({self._auto_record_count} frames)")
++
+                 self._record_states()
+ 
+             # fetch results

@@ -1,0 +1,6 @@
+torch>=1.12
+numpy
+opencv-python
+einops
+decord
+transforms3d

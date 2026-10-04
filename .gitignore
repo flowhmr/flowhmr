@@ -1,0 +1,37 @@
+# outputs
+output/
+runs/
+work_*/
+grpo_phc_reward_cache*/
+
+# large assets (see docs/install.md for download)
+assets/body_models/*
+!assets/body_models/README.md
+data/smpl
+data/smpl/
+data/grpo_gt_pool/
+checkpoints
+checkpoints/
+ckpts
+ckpts/
+
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# binaries / artifacts
+*.ckpt
+*.pth
+*.pt
+*.fbx
+*.pkl
+*.tar
+*.tar.gz
+*.log
+*.pid
+
+# editors / os
+.vscode/
+.idea/
+.DS_Store

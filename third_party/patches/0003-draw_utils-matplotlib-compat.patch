@@ -1,0 +1,16 @@
+diff --git a/phc/utils/draw_utils.py b/phc/utils/draw_utils.py
+index f135890..5f71b39 100644
+--- a/phc/utils/draw_utils.py
++++ b/phc/utils/draw_utils.py
+@@ -11,7 +11,10 @@ import matplotlib as mpl
+ 
+ 
+ def get_color_gradient(percent, color='Blues'):
+-    return mpl.colormaps[color](percent)[:3]
++    colormaps = getattr(mpl, "colormaps", None)
++    if colormaps is not None:
++        return colormaps[color](percent)[:3]
++    return mpl.cm.get_cmap(color)(percent)[:3]
+ 
+ 
+ def agt_color(aidx):

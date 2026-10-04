@@ -1,0 +1,17 @@
+diff --git a/phc/env/tasks/humanoid.py b/phc/env/tasks/humanoid.py
+index a4a2975..a7e4bf7 100644
+--- a/phc/env/tasks/humanoid.py
++++ b/phc/env/tasks/humanoid.py
+@@ -759,10 +759,10 @@ class Humanoid(BaseTask):
+ 
+     def _load_amass_gender_betas(self):
+         if self._has_mesh:
+-            gender_betas_data = joblib.load("sample_data/amass_isaac_gender_betas.pkl")
++            gender_betas_data = joblib.load("assets/example/amass_isaac_gender_betas.pkl")
+             self._amass_gender_betas = np.array(list(gender_betas_data.values()))
+         else:
+-            gender_betas_data = joblib.load("sample_data/amass_isaac_gender_betas_unique.pkl")
++            gender_betas_data = joblib.load("assets/example/amass_isaac_gender_betas_unique.pkl")
+             self._amass_gender_betas = np.array(gender_betas_data)
+             
+     def _create_envs(self, num_envs, spacing, num_per_row):

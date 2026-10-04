@@ -1,0 +1,29 @@
+# Simulation environment (PHC+ reward server / tracking evaluation), Python 3.8.
+# Install NVIDIA Isaac Gym Preview 4 (with PyTorch 1.13) first, then:
+#   pip install -r requirements-phc.txt
+#   pip install --no-build-isolation git+https://github.com/mattloper/chumpy
+# (chumpy is needed to load the SMPL .pkl files; its setup.py cannot build in an isolated env.)
+torch>=1.13,<2.0            # keep Isaac Gym's torch; prevents dependencies from upgrading it
+numpy<2.0
+scipy
+joblib>=1.2.0
+opencv-python==4.6.0.66
+tqdm
+pyyaml
+mujoco
+numpy-stl
+vtk
+patchelf
+termcolor
+torchgeometry
+scikit-image
+autograd
+lxml
+easydict
+open3d
+wandb
+gym
+hydra-core>=1.2
+rl-games==1.1.4
+git+https://github.com/ZhengyiLuo/smplx.git@master
+git+https://github.com/ZhengyiLuo/SMPLSim.git@master

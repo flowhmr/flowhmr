@@ -1,0 +1,77 @@
+# Base model config for V2MPipeline with a 491-dim latent.
+mean_std_dir: &mean_std_dir assets/motion_stats.json
+max_frame: &max_frame 360
+motion_fps: &motion_fps 30
+
+# torch.compile of the denoiser (motion_transformer) during training
+# is disabled: some accelerate versions (e.g. 1.8.1) have an unwrap_model bug that raises KeyError: '_orig_mod'.
+torch_compile: false
+
+train_pipeline: flowhmr/pipeline/pipeline_v2m.V2MPipeline
+train_pipeline_args:
+  motion_style: basic
+  fps: 30.0
+  losses_cfg:
+    recons:
+      name: SmoothL1Loss
+      weight: 1.0
+    # --- loss weights (paper §4) ---
+    smooth_root_vel_xz:
+      weight: 10.0
+    smooth_root_pos_y:
+      weight: 10.0
+    local_joints_positions:
+      weight: 10.0
+    rotation_data:
+      weight: 10.0
+    shapes:
+      weight: 1.0
+    foot_contacts:
+      weight: 4.0
+    # --- FK losses (only used when pred_type=x1/x1raw) ---
+    fk_rotation:
+      weight: 5.0
+    fk_consistency:
+      weight: 5.0
+  noise_scheduler_cfg:
+    method: euler
+  infer_noise_scheduler_cfg:
+    validation_steps: 20
+  train_cfg:
+    cond_mask_prob: 0.0
+    timestep_sample_method: logit_normal
+    t_sample_P_mean: -0.8
+    t_sample_P_std: 0.8
+  test_cfg:
+    text_guidance_scale: 1.0
+  train_frames: *max_frame
+  mean_std: *mean_std_dir
+  pred_type: x1
+
+network_module: flowhmr/network/hymotion_mmdit_for_v2m.HunyuanMotionMMDiT
+network_module_args:
+  input_dim: 491              # 491-dim motion latent
+  ctxt_input_dim:
+     feature: 3072
+     camera_R: 9
+  vtxt_input_dim: 768
+  feat_dim: 1024
+  num_layers: 18
+  num_heads: 16
+  mlp_ratio: 4.0
+  dropout: 0.0
+  mask_mode: narrowband_v2m
+  apply_rope_to_single_branch: True
+  time_factor: 1000.0
+  insert_start_token: False
+  narrowband_length: 2.0
+  narrowband_v2m_length: 3.0
+  narrowband_tm_length: 0.0
+  narrowband_tt_length: null
+  with_long_skip_connection: False
+  final_layer_cfg:
+    act_type: silu
+    zero_init: True
+  text_refiner_module: flowhmr/network/token_refiner.SingleTokenRefiner
+  text_refiner_cfg:
+    num_layers: 2

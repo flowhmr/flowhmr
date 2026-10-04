@@ -1,0 +1,94 @@
+# GRPO post-training of flowhmr_base -> flowhmr_latest.
+# Reward = MPJPE (vs. GT) + PHC+ tracking score, weights 1:1.
+mean_std_dir: assets/motion_stats.json
+max_frame: 360
+motion_fps: 30
+trainer: flowhmr/trainer/v2m_trainer_grpo.V2MGRPOTrainer
+torch_compile: false
+load_from_checkpoint: checkpoints/flowhmr_base/flowhmr_base.ckpt  # base SFT checkpoint
+train_pipeline: flowhmr/pipeline/pipeline_v2m.V2MPipeline
+train_pipeline_args:
+  motion_style: basic
+  fps: 30.0
+  losses_cfg:
+    recons:
+      name: SmoothL1Loss
+      weight: 1.0
+  noise_scheduler_cfg:
+    method: euler
+  infer_noise_scheduler_cfg:
+    validation_steps: 20
+  train_cfg:
+    cond_mask_prob: 0.0
+    timestep_sample_method: logit_normal
+    t_sample_P_mean: -0.8
+    t_sample_P_std: 0.8
+  test_cfg:
+    text_guidance_scale: 1.0
+  train_frames: 360
+  mean_std: assets/motion_stats.json
+  pred_type: x1
+network_module: flowhmr/network/hymotion_mmdit_for_v2m.HunyuanMotionMMDiT
+network_module_args:
+  input_dim: 491
+  gradient_checkpointing: true
+  ctxt_input_dim:
+    feature: 3072
+    camera_R: 9
+  vtxt_input_dim: 768
+  feat_dim: 1024
+  num_layers: 18
+  num_heads: 16
+  mlp_ratio: 4.0
+  dropout: 0.0
+  mask_mode: narrowband_v2m
+  apply_rope_to_single_branch: true
+  time_factor: 1000.0
+  insert_start_token: false
+  narrowband_length: 2.0
+  narrowband_v2m_length: 3.0
+  narrowband_tm_length: 0.0
+  narrowband_tt_length: null
+  with_long_skip_connection: false
+  final_layer_cfg:
+    act_type: silu
+    zero_init: true
+  text_refiner_module: flowhmr/network/token_refiner.SingleTokenRefiner
+  text_refiner_cfg:
+    num_layers: 2
+grpo:
+  num_generations: 8
+  sampling_steps: 20
+  eta: 0.7
+  cfg_scale: 1.0
+  clip_range: 0.001
+  adv_clip_max: 5.0
+  kl_coeff: 0.0
+  ref_kl_coeff: 0.0
+  init_same_noise: true
+  manual_grad_sync: true
+  inner_updates: 4
+  adv_std_floor: 0.0001
+  group_size: 4
+  max_timesteps: 8
+  iters_per_group: 100
+  sample_strategy: progressive
+  prog_overlap: true
+  prog_overlap_step: 1
+  roll_back: true
+  mpjpe_weight: 1.0
+  tracking_weight: 1.0
+  score_scale: 0.15
+  joint_range: null
+  sim:
+    enabled: true
+    phc_root: null  # null = this repo root (PHC+ submodule in third_party/)
+    phc_python: null  # null = current python (must be the isaacgym env)
+    max_frames: 180
+    num_envs: 32
+    device_id: -1
+    work_dir: null
+    batch_timeout: 600
+  do_validation: true
+  save_every_steps: 100
+  probe_every_steps: 100
