@@ -164,7 +164,7 @@ If Google Drive rate-limits the download, fetch the files manually from the PHC 
 ```bash
 huggingface-cli download fafsaf1/flowhmr-0.46B --local-dir checkpoints
 # or only the recommended model:
-huggingface-cli download fafsaf1/flowhmr-0.46B --include "flowhmr_latest/*" --local-dir checkpoints
+huggingface-cli download fafsaf1/flowhmr-0.46B --include "flowhmr_latest/*" "config.json" --local-dir checkpoints
 ```
 
 ```
