@@ -1,6 +1,7 @@
 <div align="center">
 <a href="https://flowhmr.github.io/"><img src="assets/FlowHMR-logo-tagline.svg" alt="FlowHMR: Physically Plausible Motion Capture from Video" width="880"></a>
 
+<a href="https://arxiv.org/abs/2610.03691"><img src="https://img.shields.io/badge/arXiv-2610.03691-b31b1b" alt="arXiv"></a>
 <a href="https://flowhmr.github.io/"><img src="https://img.shields.io/badge/Project_Page-FlowHMR-green" alt="Project Page"></a>
 <a href="https://huggingface.co/fafsaf1/flowhmr-0.46B"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Model-blue" alt="Hugging Face Model"></a>
 </div>
@@ -122,3 +123,19 @@ We thank the authors of these projects for releasing their code and models:
 - [VGGT-Omega](https://github.com/facebookresearch/vggt-omega): camera estimation
 - [SAM 3D Body](https://github.com/facebookresearch/sam-3d-body): body features
 - [YOLOX](https://github.com/Megvii-BaseDetection/YOLOX): person detection
+
+## Citation
+
+If you find FlowHMR useful in your research, please cite:
+
+```bibtex
+@misc{wang2026flowhmr,
+      title={FlowHMR: Physically Plausible Motion Capture from Video},
+      author={Zhanke Wang and Chengfeng Zhao and Qing Shuai and Jingzhong Lin and Heng Li and Zeyu Ling and Yuxin Wen and Jing Li and Di Kang and Chunchao Guo and Linchao Bao},
+      year={2026},
+      eprint={2610.03691},
+      archivePrefix={arXiv},
+      primaryClass={cs.CV},
+      url={https://arxiv.org/abs/2610.03691},
+}
+```
