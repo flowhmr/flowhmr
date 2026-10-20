@@ -139,3 +139,7 @@ If you find FlowHMR useful in your research, please cite:
       url={https://arxiv.org/abs/2610.03691},
 }
 ```
+
+## License
+
+The FlowHMR source code is licensed under the Apache License 2.0. Third-party libraries and components are subject to their respective licenses. For model weights, please refer to the license specified in the [model card](https://huggingface.co/fafsaf1/flowhmr-0.46B).
