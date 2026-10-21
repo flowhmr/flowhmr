@@ -149,7 +149,11 @@ def build_pipeline(model_cfg: dict, device: str = "cpu", ckpt: str = None,
 def build_feature_dict(sam_tokens: Tensor, camera_RT: Tensor, device: torch.device) -> dict:
     T = sam_tokens.shape[0]
     feature = sam_tokens.unsqueeze(0).to(device, dtype=torch.float32)
-    camera_R = camera_RT[:, :3, :3].reshape(T, 9).unsqueeze(0).to(device, dtype=torch.float32)
+    camera_R = camera_RT[:, :3, :3].to(device=device, dtype=torch.float32)
+    # Match training's compute_camera_features: world-to-camera rotations
+    # relative to the first frame, independent of the chosen world axes.
+    camera_R = camera_R @ camera_R[0].transpose(-1, -2)
+    camera_R = camera_R.reshape(T, 9).unsqueeze(0)
     return {"feature": feature, "camera_R": camera_R}
 
 
@@ -1125,3 +1129,4 @@ class V2MInferenceEngine:
 def _cb(progress_cb: Callable | None, progress: int, description: str):
     if progress_cb is not None:
         progress_cb(progress, description)
+
