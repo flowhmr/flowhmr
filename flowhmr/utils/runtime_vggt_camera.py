@@ -309,7 +309,7 @@ def extract_vggt_camera(
                 camera_sample_indices=np.array(sample_indices, dtype=np.int64),
             )
             print(
-                f"  [vggt] camera saved → {output_npz}  "
+                f"  [vggt] camera saved -> {output_npz}  "
                 f"(T={T}, sampled={len(sample_indices)}, interval={frame_interval}, image_size={result.image_size_hw})"
             )
 

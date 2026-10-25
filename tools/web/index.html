@@ -19,7 +19,20 @@
       <span class="logo">FlowHMR</span>
       <span class="tagline">Physically plausible motion capture from video</span>
     </div>
-    <div class="model-info" id="modelInfo">connecting...</div>
+    <div class="topbar-actions">
+      <div class="theme-options" id="themeOptions" role="group" aria-label="Color theme">
+        <button type="button" class="theme-option" data-theme-choice="light" title="Light mode" aria-label="Light mode" aria-pressed="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"/></svg>
+        </button>
+        <button type="button" class="theme-option" data-theme-choice="dark" title="Dark mode" aria-label="Dark mode" aria-pressed="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.9 13A9 9 0 0 1 11 3.1 9 9 0 1 0 20.9 13Z"/></svg>
+        </button>
+        <button type="button" class="theme-option" data-theme-choice="system" title="Follow system" aria-label="Follow system" aria-pressed="true">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8m-4-4v4"/></svg>
+        </button>
+      </div>
+      <div class="model-info" id="modelInfo">connecting...</div>
+    </div>
   </div>
 </header>
 
@@ -119,7 +132,11 @@
     <section class="card hidden" id="jobCard">
       <div class="card-head">
         <h3 class="card-title">Pipeline</h3>
-        <span class="badge" id="jobBadge">queued</span>
+        <div class="job-actions">
+          <span class="badge" id="jobBadge">queued</span>
+          <button type="button" class="btn-secondary small hidden" id="btnStopRun"
+                  title="Stop this run at the next safe processing step">Stop run</button>
+        </div>
       </div>
       <div class="job-line">
         <span class="job-name" id="jobName"></span>
@@ -143,9 +160,13 @@
     <section class="card">
       <div class="card-head">
         <h3 class="card-title">Recent runs</h3>
-        <button type="button" class="icon-btn" id="historyRefresh" title="Refresh">
+        <button type="button" class="icon-btn" id="historyRefresh" title="Refresh" aria-label="Refresh recent runs">
           <svg viewBox="0 0 24 24"><path d="M16.02 9.35h4.99M2.98 19.64v-4.99m0 0h4.99m-4.99 0l3.18 3.18a8.25 8.25 0 0013.8-3.7M4.03 9.87a8.25 8.25 0 0113.8-3.7l3.18 3.18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
+      </div>
+      <div class="history-actions">
+        <button type="button" class="btn-secondary small" id="historyDeleteSelected" disabled>Delete selected <span id="historySelectedCount">0</span></button>
+        <button type="button" class="link-btn danger" id="historyDeleteAll" disabled>Clear all</button>
       </div>
       <p class="error hidden" id="historyError"></p>
       <p class="empty-note" id="historyEmpty">No runs yet in this session</p>

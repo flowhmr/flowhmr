@@ -19,12 +19,18 @@ const postJson = (path, body) => json(path, {
 
 export const getInfo = () => json("/api/info");
 export const getJobs = () => json("/api/jobs");
+export const deleteJobs = (ids) => json("/api/jobs", {
+  method: "DELETE",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify(ids ? { ids } : {}),
+});
 export const getJob = (id) => json(`/api/jobs/${id}`);
 export const getMeta = (id) => json(`/api/jobs/${id}/meta`);
 export const getVertices = (id) => request(`/api/jobs/${id}/vertices`).then((r) => r.arrayBuffer());
 export const getFaces = (id) => request(`/api/jobs/${id}/faces`).then((r) => r.arrayBuffer());
 export const selectPerson = (id, person) => postJson(`/api/jobs/${id}/select`, { person });
 export const rerunJob = (id, params) => postJson(`/api/jobs/${id}/rerun`, params);
+export const cancelJob = (id) => postJson(`/api/jobs/${id}/cancel`);
 
 export const videoUrl = (id) => `/api/jobs/${id}/video`;
 export const npzUrl = (id) => `/api/jobs/${id}/npz`;

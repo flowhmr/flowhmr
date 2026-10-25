@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import torch
 from torch import Tensor
@@ -509,6 +509,7 @@ class SimpleV2MPipeline(torch.nn.Module):
         seeds: List[int],
         length: int,
         cfg_scale: float = 1.0,
+        step_callback: Optional[Callable[[], None]] = None,
     ) -> Dict[str, Tensor]:
         feat_val = next(iter(feature.values()))
         T = feat_val.shape[1]
@@ -549,6 +550,8 @@ class SimpleV2MPipeline(torch.nn.Module):
         y0 = torch.cat(y0_list, dim=0)
 
         def fn(t: Tensor, x: Tensor) -> Tensor:
+            if step_callback is not None:
+                step_callback()
             x_input = torch.cat([x] * 2, dim=0) if do_classifier_free_guidance else x
             x_pred = self.motion_transformer(
                 x=x_input,

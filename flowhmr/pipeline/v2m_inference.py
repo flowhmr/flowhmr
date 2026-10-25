@@ -857,7 +857,8 @@ class V2MInferenceEngine:
                       max_frames: int = None,
                       vggt_frame_interval: int = 1,
                       person_selector: Callable = None,
-                      progress_callback: Callable[[StageName, int, str], None] = None) -> str:
+                      progress_callback: Callable[[StageName, int, str], None] = None,
+                      cancel_check: Callable[[], None] = None) -> str:
         """Video -> SMPL-H motion.
 
         person_selector: optional ``f(result, candidates, default) -> candidate index``,
@@ -869,6 +870,8 @@ class V2MInferenceEngine:
         from flowhmr.utils.runtime_video_processing import VideoProcessor
 
         def _pcb(stage_name, progress, desc):
+            if cancel_check is not None:
+                cancel_check()
             if progress_callback is not None:
                 progress_callback(stage_name, progress, desc)
 
@@ -927,7 +930,7 @@ class V2MInferenceEngine:
             bbox_np, start_end = VideoProcessor.track_bboxes(result, track_idx)
 
             np.savez(bbox_npz_path, bbox=bbox_np, start_end=start_end)
-            print(f"  [bbox] saved → {bbox_npz_path}  (shape={bbox_np.shape})")
+            print(f"  [bbox] saved -> {bbox_npz_path}  (shape={bbox_np.shape})")
             _pcb(StageName.DETECTION, 100, "Bbox done")
 
         # ==== Step 2: VGGT Camera ====
@@ -1018,7 +1021,7 @@ class V2MInferenceEngine:
 
             tokens = tokens_full[s:e + 1].contiguous().cpu().to(torch.float32)
             torch.save(tokens, feat_pt_path)
-            print(f"  [sam] saved → {feat_pt_path}  (shape={tuple(tokens.shape)})")
+            print(f"  [sam] saved -> {feat_pt_path}  (shape={tuple(tokens.shape)})")
             _pcb(StageName.FEATURE_EXTRACT, 100, "SAM done")
 
         # ==== Step 4: Generation ====
@@ -1057,6 +1060,7 @@ class V2MInferenceEngine:
                 seeds=[seed],
                 length=T,
                 cfg_scale=cfg_scale,
+                step_callback=cancel_check,
             )
         _pcb(StageName.GENERATION, 50, "ODE sampling done, exporting")
 
