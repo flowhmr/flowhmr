@@ -937,9 +937,22 @@ class V2MInferenceEngine:
         print(f"\n  === Step 2: VGGT Camera ===")
         _pcb(StageName.CAMERA, 0, "Starting VGGT camera extraction")
 
-        data = np.load(bbox_npz_path)
-        start_end_arr = data["start_end"].astype(np.int64)
+        with np.load(bbox_npz_path) as data:
+            start_end_arr = data["start_end"].astype(np.int64)
+            bbox_track = data["bbox"].astype(np.float32)
         s, e = int(start_end_arr[0]), int(start_end_arr[1])
+        if max_frames is not None and max_frames > 0 and e >= max_frames:
+            clipped_end = max_frames - 1
+            if clipped_end < s:
+                raise ValueError(
+                    f"Selected person's track starts at frame {s}, beyond the max_frames limit {max_frames}"
+                )
+            bbox_track = bbox_track[:clipped_end - s + 1]
+            bbox_npz_path = os.path.join(sub_dir, f"{video_name}_bbox_max{max_frames}.npz")
+            np.savez(bbox_npz_path, bbox=bbox_track,
+                     start_end=np.array([s, clipped_end], dtype=np.int64))
+            e = clipped_end
+            print(f"  [bbox] clipped track to max_frames={max_frames}: frames {s}-{e}")
         t_track = e - s + 1
 
         from flowhmr.utils.runtime_vggt_camera import extract_vggt_camera
@@ -958,10 +971,20 @@ class V2MInferenceEngine:
         print(f"\n  === Step 3: SAM Feature ===")
         _pcb(StageName.FEATURE_EXTRACT, 0, "Starting SAM extraction")
 
+        feature_cached = False
         if os.path.exists(feat_pt_path):
+            try:
+                cached_tokens = torch.load(feat_pt_path, map_location="cpu", weights_only=True)
+                feature_cached = torch.is_tensor(cached_tokens) and cached_tokens.ndim > 0 and cached_tokens.shape[0] == t_track
+                del cached_tokens
+            except Exception as exc:
+                print(f"  [sam] cached features could not be loaded ({exc}), recomputing")
+        if feature_cached:
             print(f"  [sam] skip (exists): {feat_pt_path}")
             _pcb(StageName.FEATURE_EXTRACT, 100, "SAM cached")
         else:
+            if os.path.exists(feat_pt_path):
+                print(f"  [sam] cached feature length mismatch, expected {t_track}; recomputing")
             data = np.load(bbox_npz_path)
             bbox_track = data["bbox"].astype(np.float32)
             start_end_arr = data["start_end"].astype(np.int64)

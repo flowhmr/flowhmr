@@ -16,7 +16,10 @@ export function initParams(defaults) {
   const manual = bindToggle("optManual");
   const post = bindToggle("optPostprocess");
   const seed = $("optSeed"), cfg = $("optCfg"), stride = $("optVggt");
-  const steps = $("optSteps"), maxFrames = $("optMaxFrames");
+  const steps = $("optSteps"), maxFrames = $("optMaxFrames"), frameMode = $("optFrameMode");
+
+  const syncFrameMode = () => { maxFrames.disabled = frameMode.value === "auto"; };
+  frameMode.addEventListener("change", syncFrameMode);
 
   const apply = (p) => {
     manual.set(p.manual_select ?? true);
@@ -26,6 +29,8 @@ export function initParams(defaults) {
     stride.value = p.vggt_interval ?? 1;
     steps.value = p.steps ?? 20;
     maxFrames.value = p.max_frames ?? 900;
+    frameMode.value = p.auto_frames ? "auto" : "manual";
+    syncFrameMode();
   };
   apply(defaults || {});
 
@@ -38,6 +43,7 @@ export function initParams(defaults) {
       vggt_interval: parseInt(stride.value, 10),
       steps: parseInt(steps.value, 10),
       max_frames: parseInt(maxFrames.value, 10),
+      auto_frames: frameMode.value === "auto",
     };
     if (!Number.isInteger(out.seed) || out.seed < 0) throw new Error("Seed must be a non-negative integer.");
     if (!isFinite(out.cfg_scale) || out.cfg_scale < 0 || out.cfg_scale > 10) throw new Error("CFG scale must be between 0 and 10.");

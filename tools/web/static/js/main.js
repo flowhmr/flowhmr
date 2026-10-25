@@ -55,7 +55,7 @@ let params = null;
 try {
   info = await api.getInfo();
   $("modelInfo").textContent = `${info.model} · ${info.steps} steps · ${info.device}`;
-  $("uploadHint").textContent = `MP4, MOV, AVI, MKV, WebM · up to ${info.max_upload_mb} MB · first ${info.max_frames} frames (30 fps) are processed`;
+  $("uploadHint").textContent = `MP4, MOV, AVI, MKV, WebM · up to ${info.max_upload_mb} MB · Manual uses the first ${info.max_frames} frames; Auto uses the full video`;
 } catch {
   $("modelInfo").textContent = "server unavailable";
 }

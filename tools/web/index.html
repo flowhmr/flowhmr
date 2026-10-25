@@ -118,11 +118,18 @@
         <label class="field">
           <span>Max frames</span>
           <input class="input" id="optMaxFrames" type="number" min="30" max="10000" step="30" value="900"
-                 title="Maximum processed frames at 30 fps (900 = 30 seconds)">
+                 title="Manual frame limit at 30 fps (900 = 30 seconds)">
+        </label>
+        <label class="field">
+          <span>Frame limit mode</span>
+          <select class="input" id="optFrameMode" title="Auto processes the full video; Manual uses the Max frames limit">
+            <option value="manual">Manual</option>
+            <option value="auto">Auto detect</option>
+          </select>
         </label>
       </div>
       <p class="setting-help settings-note">
-        Out of GPU memory or a long video? Raise <strong>VGGT stride</strong> to 10–30
+        Auto detect uses the full video and may use more GPU memory. Manual mode keeps the Max frames limit. For long videos, raise <strong>VGGT stride</strong> to 10–30
         (the camera is interpolated between sampled frames).
       </p>
       <button type="button" class="btn-primary block run-btn" id="btnSubmit" disabled>Run FlowHMR</button>

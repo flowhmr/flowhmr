@@ -98,7 +98,7 @@ def get_postprocess():
 # Defaults for the page's Settings card; everything is editable per run in the UI.
 DEFAULT_PARAMS = {
     "seed": 0, "cfg_scale": 1.0, "steps": 20, "max_frames": 900, "vggt_interval": 1,
-    "postprocess": False, "manual_select": True,
+    "postprocess": False, "manual_select": True, "auto_frames": False,
 }
 
 
@@ -135,6 +135,7 @@ def parse_params(src, base=None):
         "cfg_scale": number("cfg_scale", float, 0.0, 10.0),
         "steps": number("steps", int, 1, 100),
         "max_frames": number("max_frames", int, 30, 10000),
+        "auto_frames": _to_bool(src.get("auto_frames"), base["auto_frames"]),
         "vggt_interval": number("vggt_interval", int, 1, 120),
         "postprocess": _to_bool(src.get("postprocess"), base["postprocess"]),
         "manual_select": _to_bool(src.get("manual_select"), base.get("manual_select", True)),
@@ -233,7 +234,7 @@ def restore_jobs():
             for stage in job.get("stages", []):
                 if stage.get("status") == "running":
                     stage["status"] = "cancelled" if cancelled else "failed"
-        job.setdefault("params", default_params())
+        job["params"] = {**default_params(), **job.get("params", {})}
         job.setdefault("stages", [])
         with JOBS_LOCK:
             JOBS[job["id"]] = job
@@ -383,7 +384,8 @@ def run_job(job_id):
     ENGINE.postprocess = get_postprocess() if params["postprocess"] else None
     sub_dir = ENGINE.process_video(
         input_video(job_id), job_dir(job_id), seed=params["seed"], cfg_scale=params["cfg_scale"],
-        max_frames=params["max_frames"], vggt_frame_interval=params["vggt_interval"],
+        max_frames=None if params["auto_frames"] else params["max_frames"],
+        vggt_frame_interval=params["vggt_interval"],
         person_selector=select_person if params.get("manual_select", True) else None,
         progress_callback=on_progress,
         cancel_check=lambda: _raise_if_cancelled(job_id),
