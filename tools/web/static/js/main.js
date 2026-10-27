@@ -9,6 +9,32 @@ import { initPreview } from "./preview.js";
 import { initHistory } from "./history.js";
 import { initViewer } from "./viewer.js";
 
+const themeOptions = $("themeOptions");
+const themeButtons = [...themeOptions.querySelectorAll("[data-theme-choice]")];
+const systemTheme = window.matchMedia("(prefers-color-scheme: dark)");
+let themePreference = localStorage.getItem("flowhmr-theme-mode");
+if (!["light", "dark", "system"].includes(themePreference)) themePreference = "system";
+
+function setTheme(preference) {
+  themePreference = preference;
+  const dark = preference === "dark" || (preference === "system" && systemTheme.matches);
+  document.documentElement.dataset.theme = dark ? "dark" : "light";
+  themeButtons.forEach((button) => {
+    button.setAttribute("aria-pressed", String(button.dataset.themeChoice === preference));
+  });
+  window.dispatchEvent(new CustomEvent("flowhmr:themechange", { detail: { dark } }));
+}
+setTheme(themePreference);
+themeOptions.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-theme-choice]");
+  if (!button) return;
+  setTheme(button.dataset.themeChoice);
+  localStorage.setItem("flowhmr-theme-mode", themePreference);
+});
+systemTheme.addEventListener("change", () => {
+  if (themePreference === "system") setTheme("system");
+});
+
 const bus = createBus();
 let info = null;
 let currentJob = null;
@@ -22,14 +48,14 @@ const progress = initProgress();
 const person = initPersonSelect(bus);
 const preview = initPreview(bus);
 const viewer = initViewer({ video: preview.video });
-const history = initHistory({ onOpen: openJob, onRerun: rerun });
+const history = initHistory({ onOpen: openJob, onRerun: rerun, onDeleted: clearDeletedJobs });
 let params = null;
 
 // ------------------------------------------------------------------ boot
 try {
   info = await api.getInfo();
   $("modelInfo").textContent = `${info.model} · ${info.steps} steps · ${info.device}`;
-  $("uploadHint").textContent = `MP4, MOV, AVI, MKV, WebM · up to ${info.max_upload_mb} MB · first ${info.max_frames} frames (30 fps) are processed`;
+  $("uploadHint").textContent = `MP4, MOV, AVI, MKV, WebM · up to ${info.max_upload_mb} MB · Manual uses the first ${info.max_frames} frames; Auto uses the full video`;
 } catch {
   $("modelInfo").textContent = "server unavailable";
 }
@@ -67,6 +93,17 @@ bus.on("person:reselect", async () => {
 });
 
 $("btnSubmit").addEventListener("click", submit);
+$("btnStopRun").addEventListener("click", async () => {
+  const id = currentJob;
+  if (!id || !window.confirm("Stop processing this run? The FlowHMR server will stay running.")) return;
+  $("btnStopRun").disabled = true;
+  try {
+    await api.cancelJob(id);
+    await poll();
+  } catch (e) {
+    progress.showError(e.message || "Could not stop this run");
+  }
+});
 $("btnRerun").addEventListener("click", async () => {
   if (!currentJob || submitting) return;
   submitting = true;
@@ -123,6 +160,14 @@ function resetJobView() {
   show("btnRerun", false);
 }
 
+function clearDeletedJobs(ids) {
+  if (!ids.includes(currentJob)) return;
+  resetJobView();
+  history.setCurrent(null);
+  preview.clear();
+  syncSubmit();
+}
+
 // ------------------------------------------------------------------ job polling
 async function openJob(id) {
   resetJobView();
@@ -147,14 +192,16 @@ async function poll() {
   progress.render(job);
   viewer.setStatus(job.status === "done" ? "Loading 3D result..."
     : job.status === "failed" ? "Reconstruction failed - see Pipeline on the left"
+    : job.status === "cancelled" ? "Run stopped"
+    : job.status === "cancel_requested" ? "Stopping at the next safe processing step"
     : job.status === "waiting_user" ? "Pick the person to reconstruct on the left"
     : "Reconstructing... the 3D motion appears here when the pipeline finishes");
   person.update(job);
-  preview.showJob(api.videoUrl(id), job.filename);
+  preview.showJob(api.videoUrl(id), job.filename, { refresh: job.status === "done" });
   if (paramsShownFor !== id) { params.apply(job.params); paramsShownFor = id; }  // once, so edits stick
   history.refresh();
 
-  if (["queued", "running", "waiting_user"].includes(job.status)) {
+  if (["queued", "running", "waiting_user", "cancel_requested"].includes(job.status)) {
     pollTimer = setTimeout(poll, job.status === "waiting_user" ? 1500 : 1000);
   } else if (job.status === "done" && loadedResult !== id) {
     loadedResult = id;

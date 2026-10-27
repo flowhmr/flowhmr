@@ -28,6 +28,7 @@ export function initProgress() {
     showUploading(name, frac) {
       show("jobCard", true);
       show("btnRerun", false);
+      show("btnStopRun", false);
       $("jobName").textContent = name;
       setBadge("uploading");
       show("queueBox", false);
@@ -36,7 +37,11 @@ export function initProgress() {
     },
     render(job) {
       show("jobCard", true);
-      show("btnRerun", ["done", "failed"].includes(job.status));
+      show("btnRerun", ["done", "failed", "cancelled"].includes(job.status));
+      const stop = $("btnStopRun");
+      show(stop, ["queued", "running", "waiting_user", "cancel_requested"].includes(job.status));
+      stop.disabled = job.status === "cancel_requested";
+      stop.textContent = job.status === "cancel_requested" ? "Stopping…" : "Stop run";
       $("jobName").textContent = job.filename;
       $("jobId").textContent = job.id;
       setBadge(job.status);
@@ -59,6 +64,7 @@ export function initProgress() {
     showError(msg) {
       show("jobCard", true);
       show("btnRerun", false);
+      show("btnStopRun", false);
       setBadge("failed");
       $("jobError").textContent = msg;
       show("jobError", true);

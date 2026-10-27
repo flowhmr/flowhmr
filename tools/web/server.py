@@ -13,6 +13,7 @@ import copy
 import json
 import os
 import queue
+import re
 import shutil
 import sys
 import threading
@@ -56,7 +57,12 @@ JOBS_LOCK = threading.Lock()
 JOB_QUEUE = queue.Queue()
 _POSTPROCESS = None
 SELECTIONS = {}           # job_id -> {"event": Event, "choice": int | None}
+CANCEL_REQUESTS = set()
 SELECT_TIMEOUT_S = 600    # a job waiting for a person pick falls back to the default after this
+
+
+class JobCancelled(Exception):
+    pass
 
 
 # --------------------------------------------------------------------------- engine
@@ -92,7 +98,7 @@ def get_postprocess():
 # Defaults for the page's Settings card; everything is editable per run in the UI.
 DEFAULT_PARAMS = {
     "seed": 0, "cfg_scale": 1.0, "steps": 20, "max_frames": 900, "vggt_interval": 1,
-    "postprocess": False, "manual_select": True,
+    "postprocess": False, "manual_select": True, "auto_frames": False,
 }
 
 
@@ -129,6 +135,7 @@ def parse_params(src, base=None):
         "cfg_scale": number("cfg_scale", float, 0.0, 10.0),
         "steps": number("steps", int, 1, 100),
         "max_frames": number("max_frames", int, 30, 10000),
+        "auto_frames": _to_bool(src.get("auto_frames"), base["auto_frames"]),
         "vggt_interval": number("vggt_interval", int, 1, 120),
         "postprocess": _to_bool(src.get("postprocess"), base["postprocess"]),
         "manual_select": _to_bool(src.get("manual_select"), base.get("manual_select", True)),
@@ -140,10 +147,104 @@ def job_dir(job_id):
     return os.path.join(ARGS.work_dir, job_id)
 
 
+def _persist_job_locked(job):
+    path = os.path.join(job_dir(job["id"]), "job.json")
+    temp = path + ".tmp"
+    saved = dict(job)
+    if job.get("status") != "waiting_user":
+        saved["candidates"] = None
+    with open(temp, "w", encoding="utf-8") as f:
+        json.dump(saved, f, ensure_ascii=False)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(temp, path)
+
+
+def _legacy_job(job_id, directory):
+    """Recover pre-persistence runs from their input and completed result files."""
+    inputs = [name for name in os.listdir(directory)
+              if name.startswith("input.") and os.path.isfile(os.path.join(directory, name))]
+    if not inputs:
+        return None
+    input_name = inputs[0]
+    created = os.path.getmtime(os.path.join(directory, input_name))
+    try:
+        created = time.mktime(time.strptime(job_id[:15], "%Y%m%d_%H%M%S"))
+    except ValueError:
+        pass
+    meta_path = os.path.join(directory, "mesh", "meta.json")
+    motion_path = os.path.join(directory, "motion.npz")
+    done = os.path.isfile(meta_path) and os.path.isfile(motion_path)
+    meta = {}
+    if done:
+        try:
+            with open(meta_path, encoding="utf-8") as f:
+                meta = json.load(f)
+        except (OSError, ValueError):
+            done = False
+    status = "done" if done else "failed"
+    stages = [{"name": name, "label": label, "detail": detail,
+               "status": "completed" if done else ("failed" if i == 0 else "pending"),
+               "progress": 100 if done else 0,
+               "start": created if done else None, "end": created if done else None}
+              for i, (name, label, detail) in enumerate(STAGES)]
+    return {
+        "id": job_id, "filename": f"Recovered run {job_id}", "params": default_params(),
+        "recovered": True,
+        "ext": os.path.splitext(input_name)[1], "status": status,
+        "message": "Done" if done else "Recovered from an earlier session; detailed progress is unavailable.",
+        "error": None if done else "This earlier run did not have saved job details.",
+        "progress": 100 if done else 0, "created": created,
+        "started": None, "finished": created if done else None,
+        "num_frames": meta.get("num_frames") if done else None, "fps": meta.get("fps", 30),
+        "has_fbx": os.path.isfile(os.path.join(directory, "motion.fbx")),
+        "candidates": None, "default_person": None, "selected_person": None,
+        "selection_auto": False, "stages": stages,
+    }
+
+
+def restore_jobs():
+    """Restore persisted jobs and migrate older run folders into the history."""
+    for entry in os.scandir(ARGS.work_dir):
+        if not entry.is_dir() or not re.fullmatch(r"\d{8}_\d{6}_[a-f0-9]{6}", entry.name):
+            continue
+        path = os.path.join(entry.path, "job.json")
+        try:
+            with open(path, encoding="utf-8") as f:
+                job = json.load(f)
+            if not isinstance(job, dict) or not isinstance(job.get("params"), dict):
+                raise ValueError("invalid job metadata")
+            job["id"] = entry.name
+        except FileNotFoundError:
+            job = _legacy_job(entry.name, entry.path)
+            if job is None:
+                continue
+        except (OSError, ValueError):
+            job = _legacy_job(entry.name, entry.path)
+            if job is None:
+                continue
+
+        if job.get("status") in ("queued", "running", "waiting_user", "cancel_requested", "uploading"):
+            cancelled = job["status"] == "cancel_requested"
+            job.update(status="cancelled" if cancelled else "failed",
+                       message="Run stopped when FlowHMR restarted." if cancelled
+                       else "Run interrupted when FlowHMR restarted.",
+                       error=None if cancelled else "The server restarted before this run finished.",
+                       finished=time.time())
+            for stage in job.get("stages", []):
+                if stage.get("status") == "running":
+                    stage["status"] = "cancelled" if cancelled else "failed"
+        job["params"] = {**default_params(), **job.get("params", {})}
+        job.setdefault("stages", [])
+        with JOBS_LOCK:
+            JOBS[job["id"]] = job
+            _persist_job_locked(job)
+
+
 def new_job(filename, params, ext):
     job_id = time.strftime("%Y%m%d_%H%M%S_") + uuid.uuid4().hex[:6]
     job = {
-        "id": job_id, "filename": filename, "params": params, "ext": ext,
+        "id": job_id, "filename": filename, "params": params, "ext": ext, "recovered": False,
         "status": "queued", "message": "Waiting in queue", "error": None, "progress": 0,
         "created": time.time(), "started": None, "finished": None,
         "num_frames": None, "fps": 30, "has_fbx": False,
@@ -154,12 +255,14 @@ def new_job(filename, params, ext):
     os.makedirs(job_dir(job_id), exist_ok=True)
     with JOBS_LOCK:
         JOBS[job_id] = job
+        _persist_job_locked(job)
     return job
 
 
 def update_job(job_id, **kw):
     with JOBS_LOCK:
         JOBS[job_id].update(kw)
+        _persist_job_locked(JOBS[job_id])
 
 
 def input_video(job_id):
@@ -177,23 +280,50 @@ def worker_loop():
         job_id = JOB_QUEUE.get()
         try:
             run_job(job_id)
-        except Exception as e:
-            traceback.print_exc()
+        except JobCancelled:
             with JOBS_LOCK:
-                job = JOBS[job_id]
+                job = JOBS.get(job_id)
+                if job is not None:
+                    for stage in job["stages"]:
+                        if stage["status"] == "running":
+                            stage["status"] = "cancelled"
+                    job.update(status="cancelled", message="Stopped by user", finished=time.time())
+                    _persist_job_locked(job)
+        except Exception as e:
+            with JOBS_LOCK:
+                job = JOBS.get(job_id)
+                if job is None:
+                    continue
+                cancelled = job_id in CANCEL_REQUESTS
                 for s in job["stages"]:
                     if s["status"] == "running":
-                        s["status"] = "failed"
-                job.update(status="failed", error=f"{type(e).__name__}: {e}",
-                           message="Failed", finished=time.time())
+                        s["status"] = "cancelled" if cancelled else "failed"
+                job.update(status="cancelled" if cancelled else "failed",
+                           error=None if cancelled else f"{type(e).__name__}: {e}",
+                           message="Stopped by user" if cancelled else "Failed", finished=time.time())
+                _persist_job_locked(job)
+            if not cancelled:
+                traceback.print_exc()
         finally:
+            with JOBS_LOCK:
+                CANCEL_REQUESTS.discard(job_id)
             torch.cuda.empty_cache()
             JOB_QUEUE.task_done()
 
 
+def _raise_if_cancelled(job_id):
+    with JOBS_LOCK:
+        if job_id in CANCEL_REQUESTS:
+            raise JobCancelled()
+
+
 def run_job(job_id):
-    params = JOBS[job_id]["params"]
-    update_job(job_id, status="running", message="Starting", started=time.time())
+    _raise_if_cancelled(job_id)
+    with JOBS_LOCK:
+        job = JOBS[job_id]
+        params = job["params"]
+        job.update(status="running", message="Starting", started=time.time())
+        _persist_job_locked(job)
 
     def on_progress(stage, progress, desc):
         idx = STAGE_INDEX.get(getattr(stage, "value", str(stage)))
@@ -201,7 +331,10 @@ def run_job(job_id):
             return
         now = time.time()
         with JOBS_LOCK:
+            if job_id in CANCEL_REQUESTS:
+                raise JobCancelled()
             job = JOBS[job_id]
+            before = (job["progress"], job["stages"][idx]["progress"], job["stages"][idx]["status"])
             for s in job["stages"][:idx]:  # earlier stages are finished once a later one reports
                 if s["status"] != "completed":
                     s.update(status="completed", progress=100, end=now, start=s["start"] or now)
@@ -214,6 +347,9 @@ def run_job(job_id):
                 s["status"] = "running"
             job["progress"] = int(sum(x["progress"] for x in job["stages"]) / len(job["stages"]))
             job["message"] = desc
+            after = (job["progress"], s["progress"], s["status"])
+            if before != after:
+                _persist_job_locked(job)
 
     def select_person(result, candidates, default_idx):
         """Pause the job until the user picks a person in the page (or the wait times out)."""
@@ -229,31 +365,41 @@ def run_job(job_id):
             job.update(status="waiting_user", candidates=candidates, default_person=default_idx,
                        video_size=[result.width, result.height],
                        message=f"{len(candidates)} people detected - pick the person to reconstruct")
+            _persist_job_locked(job)
         picked = slot["event"].wait(SELECT_TIMEOUT_S)
         choice = slot["choice"] if picked and slot["choice"] is not None else default_idx
         with JOBS_LOCK:
+            if job_id in CANCEL_REQUESTS:
+                SELECTIONS.pop(job_id, None)
+                raise JobCancelled()
             SELECTIONS.pop(job_id, None)
             job = JOBS[job_id]
             job["stages"][STAGE_INDEX["detection"]]["status"] = "running"
             job.update(status="running", selected_person=choice, selection_auto=not picked,
                        message=f"Person #{choice} selected" if picked else "No selection - using default person")
+            _persist_job_locked(job)
         return choice
 
     ENGINE.pipeline.validation_steps = params["steps"]
     ENGINE.postprocess = get_postprocess() if params["postprocess"] else None
     sub_dir = ENGINE.process_video(
         input_video(job_id), job_dir(job_id), seed=params["seed"], cfg_scale=params["cfg_scale"],
-        max_frames=params["max_frames"], vggt_frame_interval=params["vggt_interval"],
+        max_frames=None if params["auto_frames"] else params["max_frames"],
+        vggt_frame_interval=params["vggt_interval"],
         person_selector=select_person if params.get("manual_select", True) else None,
         progress_callback=on_progress,
+        cancel_check=lambda: _raise_if_cancelled(job_id),
     )
+    _raise_if_cancelled(job_id)
     result = os.path.join(sub_dir, f"{SUB}_seed{params['seed']}" + ("" if params["postprocess"] else "_origin"))
     if not os.path.exists(result + ".npz"):
         raise FileNotFoundError(f"generation output missing: {result}.npz")
 
     update_job(job_id, message="Building 3D mesh")
     out_root = job_dir(job_id)
+    _raise_if_cancelled(job_id)
     meta = export_mesh_sequence(result + ".npz", os.path.join(out_root, "mesh"))
+    _raise_if_cancelled(job_id)
     start, end = 0, meta["num_frames"] - 1
     bbox_npz = os.path.join(sub_dir, f"{SUB}_bbox.npz")
     if os.path.exists(bbox_npz):
@@ -270,12 +416,15 @@ def run_job(job_id):
 
     now = time.time()
     with JOBS_LOCK:
+        if job_id in CANCEL_REQUESTS:
+            raise JobCancelled()
         job = JOBS[job_id]
         for s in job["stages"]:
             if s["status"] != "completed":
                 s.update(status="completed", progress=100, end=now, start=s["start"] or now)
         job.update(status="done", progress=100, message="Done", finished=now,
                    num_frames=meta["num_frames"], has_fbx=has_fbx)
+        _persist_job_locked(job)
 
 
 # --------------------------------------------------------------------------- person thumbnails
@@ -404,7 +553,7 @@ def api_upload():
 def api_rerun(job_id):
     """New job on the same video; cached detection / camera / SAM features are reused."""
     src = get_job(job_id)
-    if src["status"] in ("queued", "running", "waiting_user"):
+    if src["status"] in ("queued", "running", "waiting_user", "cancel_requested"):
         return jsonify({"error": "job is still running"}), 409
     body = request.get_json(silent=True) or {}
     try:
@@ -414,7 +563,7 @@ def api_rerun(job_id):
     job = new_job(src["filename"], params, src["ext"])
     shutil.copy2(input_video(job_id), input_video(job["id"]))
     src_sub = os.path.join(job_dir(job_id), SUB)
-    if src["status"] in ("done", "failed") and os.path.isdir(src_sub):
+    if src["status"] in ("done", "failed", "cancelled") and os.path.isdir(src_sub):
         dst_sub = os.path.join(job_dir(job["id"]), SUB)
         os.makedirs(dst_sub, exist_ok=True)
         skip = (f"{SUB}_seed",)  # generated motion is recomputed
@@ -426,6 +575,23 @@ def api_rerun(job_id):
                 shutil.copy2(os.path.join(src_sub, name), dst_sub)
     enqueue(job)
     return jsonify({"job_id": job["id"]})
+
+
+@app.route("/api/jobs/<job_id>/cancel", methods=["POST"])
+def api_cancel_job(job_id):
+    with JOBS_LOCK:
+        job = JOBS.get(job_id)
+        if job is None:
+            abort(404)
+        if job["status"] not in ("queued", "running", "waiting_user"):
+            return jsonify({"error": "run is no longer active"}), 409
+        CANCEL_REQUESTS.add(job_id)
+        job.update(status="cancel_requested", message="Stop requested; stopping at the next safe step")
+        _persist_job_locked(job)
+        slot = SELECTIONS.get(job_id)
+        if slot is not None:
+            slot["event"].set()
+    return jsonify({"ok": True, "job_id": job_id})
 
 
 @app.route("/api/jobs/<job_id>/select", methods=["POST"])
@@ -461,11 +627,50 @@ def api_job(job_id):
 
 @app.route("/api/jobs")
 def api_jobs():
-    keys = ("id", "filename", "status", "progress", "created", "finished", "num_frames", "params")
+    keys = ("id", "filename", "status", "progress", "created", "finished", "num_frames", "params", "recovered")
     with JOBS_LOCK:
         jobs = sorted(JOBS.values(), key=lambda j: j["created"], reverse=True)[:20]
+        deletable_count = sum(j["status"] not in ("queued", "running", "waiting_user", "cancel_requested", "uploading")
+                              for j in JOBS.values())
         return jsonify({"now": time.time(),
-                        "jobs": [{k: copy.deepcopy(j[k]) for k in keys} for j in jobs]})
+                        "jobs": [{k: copy.deepcopy(j[k]) for k in keys} for j in jobs],
+                        "deletable_count": deletable_count})
+
+
+@app.route("/api/jobs", methods=["DELETE"])
+def api_delete_jobs():
+    """Delete selected jobs, or all finished jobs when no ids are supplied."""
+    body = request.get_json(silent=True) or {}
+    if not isinstance(body, dict):
+        return jsonify({"error": "request body must be a JSON object"}), 400
+    requested = body.get("ids")
+    if requested is not None and (not isinstance(requested, list) or
+                                  any(not isinstance(job_id, str) for job_id in requested)):
+        return jsonify({"error": "ids must be a list of job IDs"}), 400
+
+    deleted, skipped = [], []
+    with JOBS_LOCK:
+        job_ids = list(JOBS) if requested is None else list(dict.fromkeys(requested))
+        for job_id in job_ids:
+            job = JOBS.get(job_id)
+            if job is None:
+                if requested is not None:
+                    skipped.append({"id": job_id, "reason": "not found"})
+                continue
+            if job["status"] in ("queued", "running", "waiting_user", "cancel_requested", "uploading"):
+                skipped.append({"id": job_id, "reason": "job is still active"})
+                continue
+            try:
+                shutil.rmtree(job_dir(job_id), ignore_errors=False)
+            except FileNotFoundError:
+                pass
+            except OSError as e:
+                skipped.append({"id": job_id, "reason": f"could not remove files: {e}"})
+                continue
+            JOBS.pop(job_id)
+            SELECTIONS.pop(job_id, None)
+            deleted.append(job_id)
+    return jsonify({"deleted": deleted, "skipped": skipped})
 
 
 @app.route("/api/jobs/<job_id>/person/<int:index>.jpg")
@@ -538,11 +743,13 @@ def main():
     ARGS = parse_args()
     ARGS.ckpt = os.path.abspath(ARGS.ckpt)
     missing = [f for f in REQUIRED_FILES if not os.path.exists(os.path.join(REPO_ROOT, f))]
+    ARGS.work_dir = os.path.abspath(ARGS.work_dir)
     if not os.path.exists(ARGS.ckpt):
         missing.insert(0, ARGS.ckpt)
     if missing:
         sys.exit("missing files (see docs/install.md):\n  " + "\n  ".join(missing))
     os.makedirs(ARGS.work_dir, exist_ok=True)
+    restore_jobs()
     os.chdir(REPO_ROOT)  # body-model / asset paths are repo-relative
     ENGINE = load_engine(ARGS)
     threading.Thread(target=worker_loop, daemon=True).start()

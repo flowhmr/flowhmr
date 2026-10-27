@@ -19,12 +19,12 @@ function float16ToFloat32(src) {
   return out;
 }
 
-function checkerTexture(renderer, floorSize, cell) {
+function checkerTexture(renderer, floorSize, cell, dark = false) {
   const c = document.createElement("canvas");
   c.width = c.height = 256;
   const g = c.getContext("2d");
-  g.fillStyle = "#f4f5f7"; g.fillRect(0, 0, 256, 256);
-  g.fillStyle = "#dcdfe4"; g.fillRect(0, 0, 128, 128); g.fillRect(128, 128, 128, 128);
+  g.fillStyle = dark ? "#000000" : "#f4f5f7"; g.fillRect(0, 0, 256, 256);
+  g.fillStyle = dark ? "#111216" : "#dcdfe4"; g.fillRect(0, 0, 128, 128); g.fillRect(128, 128, 128, 128);
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
@@ -42,7 +42,9 @@ export function initViewer({ video }) {
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   container.appendChild(renderer.domElement);
 
-  const BG = 0xfbfbfc;
+  const darkTheme = document.documentElement.dataset.theme === "dark";
+  const LIGHT_BG = 0xfbfbfc;
+  const BG = darkTheme ? 0x000000 : LIGHT_BG;
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(BG);
   scene.fog = new THREE.Fog(BG, 10, 40);  // near/far follow the camera distance (see tick)
@@ -101,7 +103,7 @@ export function initViewer({ video }) {
   // plus a transparent plane on top that only draws the body's shadow.
   const FLOOR_SIZE = 200;
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(FLOOR_SIZE, FLOOR_SIZE),
-    new THREE.MeshBasicMaterial({ map: checkerTexture(renderer, FLOOR_SIZE, 0.5) }));
+    new THREE.MeshBasicMaterial({ map: checkerTexture(renderer, FLOOR_SIZE, 0.5, darkTheme) }));
   floor.rotation.x = -Math.PI / 2;
   const shadowPlane = new THREE.Mesh(new THREE.PlaneGeometry(FLOOR_SIZE, FLOOR_SIZE),
     new THREE.ShadowMaterial({ color: 0x4b5468, opacity: 0.34 }));
@@ -109,6 +111,14 @@ export function initViewer({ video }) {
   shadowPlane.position.y = 0.001;
   shadowPlane.receiveShadow = true;
   scene.add(floor, shadowPlane);
+  window.addEventListener("flowhmr:themechange", ({ detail }) => {
+    const dark = detail.dark;
+    const bg = dark ? 0x000000 : LIGHT_BG;
+    scene.background.setHex(bg);
+    scene.fog.color.setHex(bg);
+    floor.material.map.dispose();
+    floor.material.map = checkerTexture(renderer, FLOOR_SIZE, 0.5, dark);
+  });
 
   // Matte lavender-blue body.
   const bodyMat = new THREE.MeshStandardMaterial({ color: 0xb4c0f2, roughness: 0.75, metalness: 0.0 });
@@ -238,18 +248,29 @@ export function initViewer({ video }) {
     const dt = state.lastT ? (t - state.lastT) / 1000 : 0;
     state.lastT = t;
     if (state.playing && state.meta) {
-      state.acc += dt * state.meta.fps * state.speed;
-      if (state.acc >= 1) {
-        const steps = Math.floor(state.acc);
-        state.acc -= steps;
-        let next = state.frame + steps;
-        if (next >= state.meta.num_frames) {
-          next = 0;
+      if ($("optSync").checked && video.readyState >= 2 && (!video.paused || video.ended)) {
+        state.acc = 0;
+        const next = Math.floor(video.currentTime * state.meta.fps - (state.meta.track_start || 0));
+        if (video.ended || next >= state.meta.num_frames) {
           if ($("optFollow").checked) recenterOnFrame(0);
-          syncVideo(true);
+          setFrame(0);
+          video.currentTime = videoTimeFor(0);
+          video.play().catch(() => {});
+        } else if (next >= 0 && next !== state.frame) setFrame(next);
+      } else {
+        state.acc += dt * state.meta.fps * state.speed;
+        if (state.acc >= 1) {
+          const steps = Math.floor(state.acc);
+          state.acc -= steps;
+          let next = state.frame + steps;
+          if (next >= state.meta.num_frames) {
+            next = 0;
+            if ($("optFollow").checked) recenterOnFrame(0);
+            syncVideo(true);
+          }
+          setFrame(next);
+          syncVideo(false);
         }
-        setFrame(next);
-        syncVideo(false);
       }
     }
     applyZoom();
@@ -269,6 +290,8 @@ export function initViewer({ video }) {
       ]);
       state.jobId = jobId;
       state.meta = meta;
+      state.acc = 0;
+      state.lastT = 0;
       state.verts = float16ToFloat32(new Uint16Array(vbuf));
       if (body) { scene.remove(body); body.geometry.dispose(); }
       const geom = new THREE.BufferGeometry();

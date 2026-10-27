@@ -32,7 +32,8 @@ export function formatBytes(n) {
 
 export const STATUS_LABEL = {
   uploading: "Uploading", queued: "Queued", running: "Running",
-  waiting_user: "Select person", done: "Done", failed: "Failed",
+  waiting_user: "Select person", cancel_requested: "Stopping", cancelled: "Stopped",
+  done: "Done", failed: "Failed",
 };
 
 /** Distinct colours for person boxes; index = candidate index. */

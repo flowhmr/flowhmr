@@ -44,6 +44,16 @@ body {
   font-size: 12px; color: var(--muted); background: rgba(255, 255, 255, 0.7); border: 1px solid var(--line);
   border-radius: 999px; padding: 4px 12px; white-space: nowrap;
 }
+.topbar-actions { display: flex; align-items: center; gap: 10px; }
+.theme-options { display: flex; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: 9px; }
+.theme-option {
+  display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 26px; padding: 0;
+  border: 0; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer;
+}
+.theme-option svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.theme-option:hover { color: var(--text); }
+.theme-option[aria-pressed="true"] { background: var(--card); color: var(--text); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.14); }
+.theme-option:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
 
 /* ---------------------------------------------------------------- workspace layout */
 :root { --topbar-h: 52px; --gap: 16px; }
@@ -176,6 +186,7 @@ body { display: flex; flex-direction: column; height: 100vh; }
 .badge.done { background: #d1fae5; color: #047857; }
 .badge.failed { background: #fee2e2; color: #b91c1c; }
 .job-line { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.job-actions { display: flex; align-items: center; gap: 8px; }
 .job-name { font-size: 13px; color: #374151; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .job-id { font-size: 11px; color: var(--faint); white-space: nowrap; }
 .queue-box {
@@ -275,6 +286,9 @@ body { display: flex; flex-direction: column; height: 100vh; }
 }
 
 /* ---------------------------------------------------------------- recent runs */
+.history-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: -2px 0 8px; }
+.history-actions .small { padding: 6px 10px; font-size: 12px; white-space: nowrap; }
+.history-actions .link-btn { white-space: nowrap; }
 .runs { display: flex; flex-direction: column; gap: 6px; }
 .run { display: flex; align-items: center; gap: 8px; padding: 4px 6px 4px 0; border-radius: 12px; transition: background 0.15s; }
 .run:hover { background: rgba(255, 255, 255, 0.4); }
@@ -283,6 +297,87 @@ body { display: flex; flex-direction: column; height: 100vh; }
   flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; padding: 8px 12px; border: 0;
   background: none; font: inherit; color: inherit; text-align: left; cursor: pointer;
 }
+.run-select { flex: 0 0 auto; width: 16px; height: 16px; margin: 0 2px 0 8px; accent-color: var(--green); cursor: pointer; }
+.run-select:disabled { cursor: not-allowed; }
 .run-info { flex: 1; min-width: 0; }
 .run-name { font-size: 13px; color: #374151; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .run-sub { font-size: 12px; color: var(--faint); margin-top: 2px; }
+
+/* Dark mode keeps the existing neutral surfaces and green pipeline status colors. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #000000;
+  --card: rgba(12, 12, 14, 0.98);
+  --card-border: rgba(255, 255, 255, 0.07);
+  --line: rgba(255, 255, 255, 0.12);
+  --text: #e5e7eb;
+  --muted: #a6acb7;
+  --faint: #858d99;
+  --dark: #e5e7eb;
+  --shadow: 0 4px 24px rgba(0,  0, 0, 0.24);
+}
+:root[data-theme="dark"] .topbar { background: rgba(0, 0, 0, 0.96); border-color: var(--line); }
+:root[data-theme="dark"] .logo,
+:root[data-theme="dark"] .card-title,
+:root[data-theme="dark"] .file-name,
+:root[data-theme="dark"] .job-name,
+:root[data-theme="dark"] .run-name { color: #e5e7eb; }
+:root[data-theme="dark"] .model-info,
+:root[data-theme="dark"] .theme-option[aria-pressed="true"],
+:root[data-theme="dark"] .btn-secondary,
+:root[data-theme="dark"] .ghost,
+:root[data-theme="dark"] .viewer-tools { background: #17181b; color: #d1d5db; }
+:root[data-theme="dark"] .btn-secondary:hover,
+:root[data-theme="dark"] .ghost:hover,
+:root[data-theme="dark"] .icon-btn:hover:not(:disabled) { background: #222328; border-color: var(--line); }
+:root[data-theme="dark"] .btn-primary { background: #e5e7eb; color: #202226; }
+:root[data-theme="dark"] .btn-primary:hover:not(:disabled) { background: #fff; }
+:root[data-theme="dark"] .play { background: #42464f; color: #fff; }
+:root[data-theme="dark"] .toggle[aria-checked="true"] { background: #777f8b; }
+:root[data-theme="dark"] .error { color: #ff9a9f; background: rgba(74, 38, 41, 0.72); }
+:root[data-theme="dark"] .input,
+:root[data-theme="dark"] .select,
+:root[data-theme="dark"] .file-row,
+:root[data-theme="dark"] .person,
+:root[data-theme="dark"] .person-check { background: #090a0c; color: #e5e7eb; }
+:root[data-theme="dark"] .input:hover:not(:focus),
+:root[data-theme="dark"] .select:hover:not(:focus),
+:root[data-theme="dark"] .dropzone:hover,
+:root[data-theme="dark"] .dropzone:focus-visible { border-color: #68717e; background-color: #121316; }
+:root[data-theme="dark"] .dropzone { border-color: #2c2e33; }
+:root[data-theme="dark"] .drop-icon,
+:root[data-theme="dark"] .drop-sub { color: #858d99; }
+:root[data-theme="dark"] .setting-label,
+:root[data-theme="dark"] .settings-note strong,
+:root[data-theme="dark"] .stage-label,
+:root[data-theme="dark"] .person,
+:root[data-theme="dark"] .person-name,
+:root[data-theme="dark"] .viewer-tools,
+:root[data-theme="dark"] .ghost { color: #c5cad3; }
+:root[data-theme="dark"] .badge,
+:root[data-theme="dark"] .person-tag { background: #222328; color: #c5cad3; }
+:root[data-theme="dark"] .badge.queued,
+:root[data-theme="dark"] .badge.waiting_user { background: #493919; color: #f6c76a; }
+:root[data-theme="dark"] .badge.uploading,
+:root[data-theme="dark"] .badge.running { background: #243b59; color: #9cc7ff; }
+:root[data-theme="dark"] .badge.done { background: #173c31; color: #80d5b0; }
+:root[data-theme="dark"] .badge.failed { background: #4a2629; color: #ff9a9f; }
+:root[data-theme="dark"] .queue-box { background: rgba(73, 57, 25, 0.55); }
+:root[data-theme="dark"] .queue-title { color: #f6c76a; }
+:root[data-theme="dark"] .stage-dot,
+:root[data-theme="dark"] .stage-bar { background: #2a2b30; }
+:root[data-theme="dark"] .person.selected,
+:root[data-theme="dark"] .person.locked { background: #19372e; color: #a7e5cc; }
+:root[data-theme="dark"] .person.selected .person-name,
+:root[data-theme="dark"] .person.locked .person-name { color: #a7e5cc; }
+:root[data-theme="dark"] .person.selected .person-check { background: var(--green); color: #fff; }
+:root[data-theme="dark"] .viewer-wrap { background: #000000; }
+:root[data-theme="dark"] .viewer-hint { background: rgba(0, 0, 0, 0.88); color: #a6acb7; }
+:root[data-theme="dark"] .run:hover { background: rgba(255, 255, 255, 0.04); }
+:root[data-theme="dark"] .run.current { background: rgba(255, 255, 255, 0.06); box-shadow: inset 0 0 0 1px var(--line); }
+
+@media (max-width: 560px) {
+  .topbar-inner { padding: 0 12px; gap: 8px; }
+  .topbar-actions { gap: 6px; }
+  .model-info { max-width: 44vw; overflow: hidden; text-overflow: ellipsis; }
+}

@@ -160,7 +160,10 @@ export function initPreview(bus) {
 
   return {
     showLocal(file) { track = null; setSource(URL.createObjectURL(file), { local: true }); $("previewTitle").textContent = file.name; },
-    showJob(url, name) { if (baseSrc !== url) setSource(url); $("previewTitle").textContent = name; },
+    showJob(url, name, { refresh = false } = {}) {
+      if (baseSrc !== url || refresh) setSource(url);
+      $("previewTitle").textContent = name;
+    },
     setTrack(t) { track = t; },
     clear,
     video,
