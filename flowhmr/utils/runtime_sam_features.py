@@ -3,6 +3,7 @@ import os
 import os.path as osp
 import sys
 import time
+import weakref
 from typing import Callable, List, Optional, Tuple, Union
 
 import cv2
@@ -48,24 +49,33 @@ class Sam3DTokenExtractor:
     without modifying the sam-3d-body source code.
     """
 
-    def __init__(self, estimator):
+    def __init__(self, estimator, *, frame_batch_size=16,
+                 use_gpu_preprocess=True):
         self.estimator = estimator
         self.faces = estimator.faces
+        if type(frame_batch_size) is not int or frame_batch_size < 1:
+            raise ValueError("frame_batch_size must be a positive integer")
+        self.frame_batch_size = frame_batch_size
+        self.use_gpu_preprocess = bool(use_gpu_preprocess)
+        self._capture_tokens = False
         self._body_tokens: List[torch.Tensor] = []
         self._hand_tokens: List[torch.Tensor] = []
         self._hooks = self._install_hooks()
 
     def _install_hooks(self) -> List[torch.utils.hooks.RemovableHandle]:
         model = self.estimator.model
-        body_tokens = self._body_tokens
-        hand_tokens = self._hand_tokens
+        extractor_ref = weakref.ref(self)
 
         def _body_hook(_module, _input, output):
             # output = (pose_token, pose_output); pose_token: (B*P, num_tok, D)
-            body_tokens.append(output[0].detach())
+            extractor = extractor_ref()
+            if extractor is not None and extractor._capture_tokens:
+                extractor._body_tokens.append(output[0].detach())
 
         def _hand_hook(_module, _input, output):
-            hand_tokens.append(output[0].detach())
+            extractor = extractor_ref()
+            if extractor is not None and extractor._capture_tokens:
+                extractor._hand_tokens.append(output[0].detach())
 
         h1 = model.decoder.register_forward_hook(_body_hook)
         h2 = model.decoder_hand.register_forward_hook(_hand_hook)
@@ -89,17 +99,21 @@ class Sam3DTokenExtractor:
         self._body_tokens.clear()
         self._hand_tokens.clear()
 
-        all_out = self.estimator.process_one_image(
-            img,
-            bboxes=bboxes,
-            masks=masks,
-            cam_int=cam_int,
-            det_cat_id=det_cat_id,
-            bbox_thr=bbox_thr,
-            nms_thr=nms_thr,
-            use_mask=use_mask,
-            inference_type=inference_type,
-        )
+        self._capture_tokens = True
+        try:
+            all_out = self.estimator.process_one_image(
+                img,
+                bboxes=bboxes,
+                masks=masks,
+                cam_int=cam_int,
+                det_cat_id=det_cat_id,
+                bbox_thr=bbox_thr,
+                nms_thr=nms_thr,
+                use_mask=use_mask,
+                inference_type=inference_type,
+            )
+        finally:
+            self._capture_tokens = False
 
         if not all_out:
             return torch.zeros(0), all_out
@@ -127,6 +141,43 @@ class Sam3DTokenExtractor:
         ).cpu()
 
         return all_token, all_out
+
+    def extract_frames(self, images, boxes, cameras, *, frame_batch_size=None,
+                       use_gpu_preprocess=None) -> Tensor:
+        """Extract body and both hand tokens without full SAM postprocessing.
+
+        Defaults use sixteen video frames per batch and GPU crop preprocessing.
+        Each chunk runs its body batch followed by both hands in one batch.
+        ``extract_frame`` continues to return complete SAM visualization data.
+        """
+        from .lite_sam_infer import extract_tokens
+
+        batch_size = self.frame_batch_size if frame_batch_size is None else frame_batch_size
+        if type(batch_size) is not int or batch_size < 1:
+            raise ValueError("frame_batch_size must be a positive integer")
+        if len(images) != len(boxes) or len(images) != len(cameras):
+            raise ValueError("Expected one box and one camera per image")
+        if not images:
+            return torch.empty((0, 3072), dtype=torch.float32)
+        gpu_preprocess = self.use_gpu_preprocess if use_gpu_preprocess is None else bool(use_gpu_preprocess)
+        self._body_tokens.clear()
+        self._hand_tokens.clear()
+        tokens = []
+        for start in range(0, len(images), batch_size):
+            stop = start + batch_size
+            tokens.append(extract_tokens(
+                self.estimator, images[start:stop], boxes[start:stop], cameras[start:stop],
+                gpu_preprocess=gpu_preprocess, merge_hands=True,
+            ))
+        return torch.cat(tokens)
+
+    def close(self):
+        """Remove this wrapper's hooks without changing the underlying model."""
+        for handle in self._hooks:
+            handle.remove()
+        self._hooks.clear()
+        self._body_tokens.clear()
+        self._hand_tokens.clear()
 
     # Helpers
     @staticmethod
@@ -181,9 +232,14 @@ class Sam3DTokenExtractor:
         nms_thr: float = 0.3,
         max_frames: Optional[int] = None,
         progress_cb: Optional[Callable[[str, int, Optional[int], str], None]] = None,
+        frame_batch_size: Optional[int] = None,
+        use_gpu_preprocess: Optional[bool] = None,
     ) -> Tensor:
         if inference_type != "full":
             raise ValueError("extract_video_tokens only supports inference_type='full'")
+        batch_size = self.frame_batch_size if frame_batch_size is None else frame_batch_size
+        if type(batch_size) is not int or batch_size < 1:
+            raise ValueError("frame_batch_size must be a positive integer")
 
         total_frames = self._get_total_frames(video_path)
 
@@ -206,23 +262,35 @@ class Sam3DTokenExtractor:
         try:
             i = 0
             while True:
-                ok, frame_bgr = cap.read()
-                if not ok:
+                frames = []
+                for _ in range(batch_size):
+                    if effective_max is not None and i + len(frames) >= effective_max:
+                        break
+                    ok, frame_bgr = cap.read()
+                    if not ok:
+                        break
+                    frames.append(cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB))
+                if not frames:
                     break
-                frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
-                b = bbox_xyxy[i].reshape(1, 4).cpu().numpy()
-                cam_int = K_all[i].reshape(1, 3, 3)
-                token, _outputs = self.extract_frame(
-                    frame_rgb,
-                    bboxes=b,
-                    bbox_thr=bbox_thr,
-                    nms_thr=nms_thr,
-                    use_mask=use_mask,
-                    inference_type=inference_type,
-                    cam_int=cam_int,
-                )
-                feats.append(token[:token_dim].to(torch.float32))
-                i += 1
+                stop = i + len(frames)
+                if use_mask:
+                    # Keep the existing optional segmentation behavior.
+                    tokens = torch.stack([
+                        self.extract_frame(
+                            frame, bboxes=bbox_xyxy[index].reshape(1, 4).numpy(),
+                            cam_int=K_all[index].reshape(1, 3, 3), use_mask=True,
+                            bbox_thr=bbox_thr, nms_thr=nms_thr,
+                        )[0].to(torch.float32)
+                        for index, frame in enumerate(frames, i)
+                    ])
+                else:
+                    tokens = self.extract_frames(
+                        frames, bbox_xyxy[i:stop], K_all[i:stop],
+                        frame_batch_size=batch_size,
+                        use_gpu_preprocess=use_gpu_preprocess,
+                    )
+                feats.extend(tokens[:, :token_dim].unbind(0))
+                i = stop
                 _call_progress(progress_cb, "sam", i, pbar_total, "sam: running")
                 if i % 10 == 0 or i == pbar_total:
                     elapsed = time.time() - t_start
@@ -373,7 +441,11 @@ def _maybe_convert_backbone_to_fp16(sam_model, device: torch.device) -> None:
     sam_model.backbone_dtype = torch.float16
 
 
-def build_sam3d_extractor(device: torch.device) -> Sam3DTokenExtractor:
+def build_sam3d_extractor(device: torch.device, *, frame_batch_size=16,
+                          use_gpu_preprocess=True, use_compile=None) -> Sam3DTokenExtractor:
+    from .sam_compile import enable_sam_compile, resolve_sam_compile
+
+    compile_backbone = resolve_sam_compile(device, use_compile)
     if not osp.exists(SAM3D_CKPT_PATH):
         raise FileNotFoundError(f"SAM3D checkpoint not found: {SAM3D_CKPT_PATH}")
     if not osp.exists(SAM3D_MHR_PATH):
@@ -385,8 +457,11 @@ def build_sam3d_extractor(device: torch.device) -> Sam3DTokenExtractor:
         device=device,
     )
     _maybe_convert_backbone_to_fp16(sam_model, device)
+    if compile_backbone:
+        enable_sam_compile(sam_model, device)
     estimator = SAM3DBodyEstimator(sam_3d_body_model=sam_model, model_cfg=sam_cfg)
-    return Sam3DTokenExtractor(estimator)
+    return Sam3DTokenExtractor(estimator, frame_batch_size=frame_batch_size,
+                               use_gpu_preprocess=use_gpu_preprocess)
 
 
 if __name__ == "__main__":

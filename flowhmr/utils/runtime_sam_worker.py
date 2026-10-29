@@ -86,21 +86,12 @@ def _do_extract(extractor, request: dict) -> Tensor:
     Ks = request["Ks"]                   # np.ndarray (N, 3, 3)
     token_dim = request.get("token_dim", 3072)
 
-    tokens = []
-    for i in range(len(frames)):
-        b = bboxes[i:i + 1] # (1, 4) numpy
-        cam_int = torch.from_numpy(Ks[i:i + 1]).float()
-        token, _ = extractor.extract_frame(
-            frames[i],
-            bboxes=b,
-            cam_int=cam_int,
-            inference_type="full",
-        )
-        tokens.append(token[:token_dim].to(torch.float32))
-
-    if len(tokens) == 0:
+    if not frames:
         return torch.zeros(0, token_dim)
-    return torch.stack(tokens, dim=0)
+    return extractor.extract_frames(
+        frames, bboxes, Ks,
+        frame_batch_size=request.get("frame_batch_size"),
+    )[:, :token_dim]
 
 
 def decode_video_frames(video_path: str, max_frames: Optional[int] = None) -> List[np.ndarray]:
@@ -189,9 +180,12 @@ class SamWorkerPool:
         token_dim: int = 3072,
         max_frames: Optional[int] = None,
         progress_cb: Optional[Callable] = None,
+        frame_batch_size: int = 16,
     ) -> Tensor:
         if not self._started:
             raise RuntimeError("SamWorkerPool is not started; call start() first")
+        if type(frame_batch_size) is not int or frame_batch_size < 1:
+            raise ValueError("frame_batch_size must be a positive integer")
 
         def _report(current: int, total: int, message: str):
             """Report progress via callback (same signature as single-GPU)."""
@@ -229,6 +223,7 @@ class SamWorkerPool:
                 "bboxes": bbox_xyxy[indices].numpy(),
                 "Ks": K_all[indices].numpy(),
                 "token_dim": token_dim,
+                "frame_batch_size": frame_batch_size,
             }
 
             conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
