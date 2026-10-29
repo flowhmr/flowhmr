@@ -1,4 +1,4 @@
-// "Settings" card: manual person selection, seed, CFG scale, VGGT stride, post-processing.
+// "Settings" card: person selection, camera mode, sampling and post-processing.
 import { $ } from "./utils.js";
 
 function bindToggle(id) {
@@ -12,25 +12,41 @@ function bindToggle(id) {
   };
 }
 
+function samChunkSize(value) {
+  if (typeof value === "string" && /^\d+$/.test(value.trim())) value = Number(value.trim());
+  if (!Number.isSafeInteger(value) || value < 1) {
+    throw new Error("SAM chunk must be a positive integer.");
+  }
+  return value;
+}
+
 export function initParams(defaults) {
   const manual = bindToggle("optManual");
   const post = bindToggle("optPostprocess");
   const autoFrames = bindToggle("optAutoFrames");
+  const staticCamera = bindToggle("optStaticCamera");
   const seed = $("optSeed"), cfg = $("optCfg"), stride = $("optVggt");
   const steps = $("optSteps"), maxFrames = $("optMaxFrames");
+  const samChunk = $("optSamChunk");
   const syncMaxFrames = () => { maxFrames.disabled = autoFrames.get(); };
   $("optAutoFrames").addEventListener("click", syncMaxFrames);
+  const syncCamera = () => { stride.disabled = staticCamera.get(); };
+  $("optStaticCamera").addEventListener("click", syncCamera);
 
   const apply = (p) => {
+    const chunkSize = samChunkSize(p.sam_chunk_size ?? 16);
     manual.set(p.manual_select ?? true);
     post.set(!!p.postprocess);
     autoFrames.set(!!p.auto_frames);
+    staticCamera.set(!!p.static_camera);
     seed.value = p.seed ?? 0;
     cfg.value = p.cfg_scale ?? 1.0;
     stride.value = p.vggt_interval ?? 1;
     steps.value = p.steps ?? 20;
     maxFrames.value = p.max_frames ?? 900;
+    samChunk.value = chunkSize;
     syncMaxFrames();
+    syncCamera();
   };
   apply(defaults || {});
 
@@ -38,9 +54,11 @@ export function initParams(defaults) {
     const out = {
       manual_select: manual.get(),
       postprocess: post.get(),
+      static_camera: staticCamera.get(),
       seed: parseInt(seed.value, 10),
       cfg_scale: parseFloat(cfg.value),
       vggt_interval: parseInt(stride.value, 10),
+      sam_chunk_size: samChunkSize(samChunk.value),
       steps: parseInt(steps.value, 10),
       max_frames: parseInt(maxFrames.value, 10),
       auto_frames: autoFrames.get(),

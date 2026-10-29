@@ -14,6 +14,7 @@ import sys
 import tempfile
 from dataclasses import dataclass
 from typing import Any, Optional, Tuple
+from zipfile import BadZipFile
 
 import cv2
 import numpy as np
@@ -37,6 +38,43 @@ class VGGTCameraResult:
 
 
 _VGGT_MODEL_CACHE: dict[tuple[str, str], Any] = {}
+
+
+def make_static_camera(image_size_hw, *, frame_range, output_npz=None) -> VGGTCameraResult:
+    """Use a fixed camera and SAM's default intrinsics without loading VGGT."""
+    from flowhmr.utils.runtime_video_processing import VideoProcessor
+
+    height, width = map(int, image_size_hw)
+    start, end = map(int, frame_range)
+    if min(height, width) <= 0 or start < 0 or end < start:
+        raise ValueError(f"Invalid static camera dimensions/range: {image_size_hw}, {frame_range}")
+    length = end - start + 1
+    camera_rt = np.repeat(np.eye(4, dtype=np.float32)[None], length, axis=0)
+    K = np.repeat(VideoProcessor.default_K_from_hw(height, width)[None], length, axis=0)
+    result = VGGTCameraResult(camera_rt, camera_rt, K, (height, width))
+    if output_npz is not None:
+        valid_cache = False
+        if osp.isfile(output_npz):
+            try:
+                with open(output_npz, "rb") as cache_file, np.load(cache_file, allow_pickle=False) as data:
+                    valid_cache = (
+                        str(data["camera_mode"]) == "static"
+                        and str(data["k_space"]) == "original_frame"
+                        and np.array_equal(data["frame_range"], [start, end])
+                        and np.array_equal(data["image_size_hw"], [height, width])
+                        and np.array_equal(data["camera_RT"], camera_rt)
+                        and np.array_equal(data["K"], K)
+                    )
+            except (KeyError, ValueError, OSError, BadZipFile):
+                pass
+        if not valid_cache:
+            os.makedirs(osp.dirname(osp.abspath(output_npz)), exist_ok=True)
+            np.savez(output_npz, camera_mode="static", camera_world="opencv_static",
+                     camera_RT=camera_rt, RT=camera_rt, K=K,
+                     image_size_hw=np.array([height, width], dtype=np.int64),
+                     frame_range=np.array([start, end], dtype=np.int64),
+                     k_space="original_frame", k_source="image_diagonal")
+    return result
 
 
 def _interpolate_camera_sequence(
@@ -193,7 +231,11 @@ def extract_vggt_camera(
         cached_interval = int(data["camera_sampling_interval"]) if "camera_sampling_interval" in data.files else 1
         valid_interval = cached_interval == frame_interval
         valid_len = expected_len is None or camera_RT.shape[0] == int(expected_len)
-        if k_space == "original_frame" and valid_len and valid_interval:
+        valid_range = frame_range is None or (
+            "frame_range" in data.files and np.array_equal(data["frame_range"], frame_range)
+        )
+        valid_k = data["K"].shape == (camera_RT.shape[0], 3, 3)
+        if k_space == "original_frame" and valid_len and valid_interval and valid_range and valid_k:
             print(f"  [vggt] skip cached camera: {output_npz}")
             return VGGTCameraResult(
                 camera_RT=camera_RT,
@@ -205,6 +247,10 @@ def extract_vggt_camera(
             print(f"  [vggt] cached camera K is not original-frame space ({k_space!r}), recomputing")
         elif not valid_interval:
             print(f"  [vggt] cached camera interval mismatch: {cached_interval} != {frame_interval}, recomputing")
+        elif not valid_range:
+            print("  [vggt] cached frame range mismatch, recomputing")
+        elif not valid_k:
+            print("  [vggt] cached camera intrinsics length mismatch, recomputing")
         else:
             print(f"  [vggt] cached camera length mismatch: {camera_RT.shape[0]} != {expected_len}, recomputing")
 

@@ -17,7 +17,8 @@ export function initProgress() {
       row.append(bar);
       row.append(el("span", "stage-pct num", `${s.status === "completed" ? 100 : Math.round(s.progress)}%`));
       let t = "";
-      if (s.start) t = formatSeconds((s.end || now) - s.start);
+      if (s.start) t = formatSeconds(Math.max(0,
+        (s.end || s.paused_at || now) - s.start - (s.paused_seconds || 0)));
       if (s.status === "waiting_user") t = "waiting";
       row.append(el("span", "stage-time num", t));
       list.append(row);

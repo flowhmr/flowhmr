@@ -43,7 +43,7 @@ export function initHistory({ onOpen, onRerun, onDeleted }) {
       const info = el("div", "run-info");
       info.append(el("div", "run-name", j.filename),
         el("div", "run-sub", j.recovered ? "Recovered from disk · settings unavailable"
-          : `${formatRelative(j.created, now)} · seed ${j.params.seed} · cfg ${j.params.cfg_scale}`));
+          : `${formatRelative(j.created, now)} · seed ${j.params.seed} · cfg ${j.params.cfg_scale} · ${j.params.static_camera ? "static camera" : "estimated camera"}`));
       const tag = el("span", `badge ${j.status}`,
         j.status === "running" ? `${j.progress}%` : (STATUS_LABEL[j.status] || j.status));
       open.append(info, tag);
@@ -67,7 +67,7 @@ export function initHistory({ onOpen, onRerun, onDeleted }) {
           refresh();
         });
       } else {
-        action.title = "Re-run with the current settings (detections, camera and features are reused)";
+        action.title = "Re-run with the current settings";
         action.setAttribute("aria-label", `Re-run ${j.filename}`);
         action.disabled = busy !== null;
         action.innerHTML = '<svg viewBox="0 0 24 24"><path d="M16.02 9.35h4.99M2.98 19.64v-4.99m0 0h4.99m-4.99 0l3.18 3.18a8.25 8.25 0 0013.8-3.7M4.03 9.87a8.25 8.25 0 013.18-3.7l3.18 3.18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';

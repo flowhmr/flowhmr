@@ -81,57 +81,79 @@
 
     <!-- Settings -->
     <section class="card">
-      <h3 class="card-title">Settings</h3>
-      <div class="setting-row">
-        <div>
-          <div class="setting-label">Manual person selection</div>
-          <div class="setting-help">Pause after detection when several people are found</div>
+      <details class="settings-panel" open>
+        <summary class="settings-summary">
+          <h3 class="card-title">Settings</h3>
+          <svg class="settings-chevron" viewBox="0 0 20 20" aria-hidden="true">
+            <path d="m6 8 4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </summary>
+        <div class="setting-row">
+          <div>
+            <div class="setting-label">Manual person selection</div>
+            <div class="setting-help">Pause after detection when several people are found</div>
+          </div>
+          <button type="button" class="toggle" id="optManual" role="switch" aria-checked="true"><span class="toggle-knob"></span></button>
         </div>
-        <button type="button" class="toggle" id="optManual" role="switch" aria-checked="true"><span class="toggle-knob"></span></button>
-      </div>
-      <div class="setting-row">
-        <div>
-          <div class="setting-label">Post-processing</div>
-          <div class="setting-help">Temporal smoothing + foot-contact IK cleanup</div>
+        <div class="setting-row">
+          <div>
+            <div class="setting-label">Static camera</div>
+            <div class="setting-help">For a stationary camera; skip camera motion estimation</div>
+          </div>
+          <button type="button" class="toggle" id="optStaticCamera" role="switch" aria-checked="false" aria-label="Static camera"><span class="toggle-knob"></span></button>
         </div>
-        <button type="button" class="toggle" id="optPostprocess" role="switch" aria-checked="false"><span class="toggle-knob"></span></button>
-      </div>
-      <div class="setting-row">
-        <div>
-          <div class="setting-label">Auto frame detection</div>
-          <div class="setting-help">Process the full video; turn off to use the Max frames limit</div>
+        <div class="setting-row">
+          <div>
+            <div class="setting-label">Post-processing</div>
+            <div class="setting-help">Temporal smoothing + foot-contact IK cleanup</div>
+          </div>
+          <button type="button" class="toggle" id="optPostprocess" role="switch" aria-checked="false"><span class="toggle-knob"></span></button>
         </div>
-        <button type="button" class="toggle" id="optAutoFrames" role="switch" aria-checked="false"><span class="toggle-knob"></span></button>
-      </div>
-      <div class="field-grid">
-        <label class="field">
-          <span>Seed</span>
-          <input class="input" id="optSeed" type="number" min="0" step="1" value="0">
-        </label>
-        <label class="field">
-          <span>CFG scale</span>
-          <input class="input" id="optCfg" type="number" min="0" max="10" step="0.1" value="1.0">
-        </label>
-        <label class="field">
-          <span>VGGT stride</span>
-          <input class="input" id="optVggt" type="number" min="1" max="120" step="1" value="1"
-                 title="Run VGGT-Omega on every N-th frame; use 10-30 for long videos or limited GPU memory">
-        </label>
-        <label class="field">
-          <span>Steps</span>
-          <input class="input" id="optSteps" type="number" min="1" max="100" step="1" value="20"
-                 title="Flow-matching ODE steps; more steps trade speed for quality">
-        </label>
-        <label class="field">
-          <span>Max frames</span>
-          <input class="input" id="optMaxFrames" type="number" min="30" max="10000" step="30" value="900"
-                 title="Manual frame limit at 30 fps (900 = 30 seconds)">
-        </label>
-      </div>
-      <p class="setting-help settings-note">
-        Auto frame detection uses the full video and may use more GPU memory. With it off, Max frames applies. For long videos, raise <strong>VGGT stride</strong> to 10–30
-        (the camera is interpolated between sampled frames).
-      </p>
+        <div class="setting-row">
+          <div>
+            <div class="setting-label">Auto frame detection</div>
+            <div class="setting-help">Process the full video; turn off to use the Max frames limit</div>
+          </div>
+          <button type="button" class="toggle" id="optAutoFrames" role="switch" aria-checked="false"><span class="toggle-knob"></span></button>
+        </div>
+        <div class="field-grid">
+          <label class="field">
+            <span>Seed</span>
+            <input class="input" id="optSeed" type="number" min="0" step="1" value="0">
+          </label>
+          <label class="field">
+            <span>CFG scale</span>
+            <input class="input" id="optCfg" type="number" min="0" max="10" step="0.1" value="1.0">
+          </label>
+          <label class="field">
+            <span>VGGT stride</span>
+            <input class="input" id="optVggt" type="number" min="1" max="120" step="1" value="1"
+                   title="Run VGGT-Omega on every N-th frame; use 10-30 for long videos or limited GPU memory">
+          </label>
+          <label class="field">
+            <span>Steps</span>
+            <input class="input" id="optSteps" type="number" min="1" max="100" step="1" value="20"
+                   title="Flow-matching ODE steps; more steps trade speed for quality">
+          </label>
+          <label class="field">
+            <span>SAM chunk (frames)</span>
+            <input class="input" id="optSamChunk" type="number" min="1" step="1" value="16"
+                   aria-describedby="samChunkHelp"
+                   title="Hand batch is automatically twice the chunk size. Lower the chunk size if SAM runs out of GPU memory.">
+          </label>
+          <label class="field">
+            <span>Max frames</span>
+            <input class="input" id="optMaxFrames" type="number" min="30" max="10000" step="30" value="900"
+                   title="Manual frame limit at 30 fps (900 = 30 seconds)">
+          </label>
+        </div>
+        <p class="setting-help settings-note">
+          Auto frame detection uses the full video and may use more GPU memory. With it off, Max frames applies.<br>
+          <span id="samChunkHelp">If SAM runs out of GPU memory, lower <strong>SAM chunk</strong> (16 → 8 → 4).</span><br>
+          For long videos or limited GPU memory, raise <strong>VGGT stride</strong> to 10–30
+          (the camera is interpolated between sampled frames).
+        </p>
+      </details>
       <button type="button" class="btn-primary block run-btn" id="btnSubmit" disabled>Run FlowHMR</button>
     </section>
 
@@ -160,7 +182,7 @@
       <p class="job-msg" id="jobMsg"></p>
       <p class="error hidden" id="jobError"></p>
       <button type="button" class="btn-secondary block rerun-btn hidden" id="btnRerun"
-              title="Run generation again with the current Settings (detection, camera and features are reused)">Re-run with current settings</button>
+              title="Run again with the current settings">Re-run with current settings</button>
     </section>
 
     <!-- Recent runs -->

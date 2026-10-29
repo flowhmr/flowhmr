@@ -166,6 +166,18 @@ body { display: flex; flex-direction: column; height: 100vh; }
 .file-size { font-size: 12px; color: var(--faint); }
 
 /* ---------------------------------------------------------------- settings */
+.settings-summary {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 4px 0; border-radius: 6px; color: var(--text); cursor: pointer; list-style: none;
+}
+.settings-summary::-webkit-details-marker { display: none; }
+.settings-summary::marker { content: ""; }
+.settings-summary .card-title { margin: 0; color: inherit; }
+.settings-summary:hover { background: var(--line); }
+.settings-summary:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
+.settings-chevron { width: 18px; height: 18px; flex-shrink: 0; color: var(--muted); transform: rotate(-90deg); }
+.settings-panel[open] > .settings-summary { margin-bottom: 12px; }
+.settings-panel[open] > .settings-summary .settings-chevron { transform: rotate(0deg); }
 .setting-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 4px 0 10px; }
 .setting-label { font-size: 13px; color: #4b5563; }
 .setting-help { font-size: 12px; color: var(--faint); margin-top: 2px; }

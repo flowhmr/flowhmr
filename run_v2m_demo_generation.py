@@ -3,8 +3,9 @@
     python run_v2m_demo_generation.py assets/example/example.mp4
     python run_v2m_demo_generation.py a.mp4 b.mov my_videos/ --ckpt checkpoints/flowhmr_base/flowhmr_base.ckpt
 
-Every video goes through the full pipeline: 30 fps transcode -> YOLOX person detection &
-tracking -> VGGT-Omega camera -> SAM-3D-Body tokens -> FlowHMR generation. Results land in
+The default pipeline is: 30 fps transcode -> YOLOX person detection & tracking ->
+VGGT-Omega camera -> SAM-3D-Body tokens -> FlowHMR generation. --static_camera skips
+VGGT for a fixed camera using approximate intrinsics. Results land in
 output/<video name>/<ckpt name>.npz; the extracted features are kept next to it and reused
 when the same video is run again (e.g. with another checkpoint). --overwrite recomputes them.
 """
@@ -49,8 +50,9 @@ def collect_videos(inputs):
     return [os.path.abspath(v) for v in videos]
 
 
-def check_files(ckpt):
-    missing = [f for f in REQUIRED_FILES if not os.path.exists(os.path.join(REPO_ROOT, f))]
+def check_files(ckpt, *, static_camera=False):
+    required = [f for f in REQUIRED_FILES if not (static_camera and f.startswith("ckpts/vggt-omega/"))]
+    missing = [f for f in required if not os.path.exists(os.path.join(REPO_ROOT, f))]
     if not os.path.exists(ckpt):
         missing.insert(0, ckpt)
     if missing:
@@ -62,13 +64,14 @@ def run_video(engine, video, args, tag):
     out_dir = os.path.join(OUTPUT_ROOT, stem)
     if args.overwrite:
         for name in (f"{stem}_30fps.mp4", f"{stem}_bbox.npz", f"{stem}_vggt_camera.npz",
-                     f"{stem}_sam3d_feat.pt"):
+                     f"{stem}_static_camera.npz", f"{stem}_sam3d_feat.pt", f"{stem}_sam3d_feat_static.pt"):
             path = os.path.join(out_dir, name)
             if os.path.exists(path):
                 os.remove(path)
 
     engine.process_video(video, OUTPUT_ROOT, seed=args.seed, cfg_scale=args.cfg_scale,
-                         vggt_frame_interval=args.vggt_interval)
+                         vggt_frame_interval=args.vggt_interval, static_camera=args.static_camera,
+                         sam_chunk_size=args.sam_chunk_size)
 
     # process_video writes <stem>_seed<k>_origin.* (raw) and, with post-processing,
     # <stem>_seed<k>.*; keep the final one as <tag>.* and drop the other.
@@ -103,17 +106,24 @@ def parse_args():
                         "(off: raw model output)")
     p.add_argument("--vggt_interval", type=int, default=1,
                    help="run VGGT-Omega on every N-th frame (camera interpolated in between); "
-                        "use 10-30 for long videos or limited GPU memory")
+                        "use 10-30 for long videos or limited GPU memory; ignored with --static_camera")
+    p.add_argument("--static_camera", action="store_true",
+                   help="skip VGGT for a fixed camera; use a constant pose and default intrinsics")
+    p.add_argument("--sam_chunk_size", type=int, default=16,
+                   help="frames per SAM body batch; hand batch is twice this size (default: 16)")
     p.add_argument("--overwrite", action="store_true",
                    help="recompute cached detection / camera / SAM features")
-    return p.parse_args()
+    args = p.parse_args()
+    if args.sam_chunk_size < 1:
+        p.error("--sam_chunk_size must be a positive integer")
+    return args
 
 
 def main():
     args = parse_args()
     args.ckpt = os.path.abspath(args.ckpt)
     videos = collect_videos(args.videos)
-    check_files(args.ckpt)
+    check_files(args.ckpt, static_camera=args.static_camera)
 
     model_cfg = args.model_cfg
     if model_cfg is None:

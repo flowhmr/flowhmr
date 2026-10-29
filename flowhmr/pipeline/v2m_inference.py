@@ -157,6 +157,38 @@ def build_feature_dict(sam_tokens: Tensor, camera_RT: Tensor, device: torch.devi
     return {"feature": feature, "camera_R": camera_R}
 
 
+def _limit_track_frames(bbox_path: str, max_frames: int | None,
+                        dependent_paths: tuple[str, ...] = ()) -> None:
+    """Apply the video-frame limit to an inclusive track, retaining its full boxes."""
+    with np.load(bbox_path) as data:
+        payload = {key: data[key] for key in data.files}
+    full_bbox = payload.get("unclipped_bbox", payload["bbox"])
+    full_range = payload.get("unclipped_start_end", payload["start_end"])
+    start, full_end = (int(value) for value in full_range)
+    if start < 0 or full_end < start or len(full_bbox) != full_end - start + 1:
+        raise ValueError(f"Invalid bbox track range: {full_range}, boxes={len(full_bbox)}")
+    end = min(full_end, int(max_frames) - 1) if max_frames is not None and max_frames > 0 else full_end
+    if start > end:
+        raise ValueError(
+            f"Selected person starts at frame {start}, outside the first {max_frames} frames. "
+            "Increase Max frames or select a person visible earlier."
+        )
+    if np.array_equal(payload["start_end"], [start, end]):
+        return
+
+    # Retain the complete selected track so a later run can increase/remove the limit.
+    payload["unclipped_bbox"] = full_bbox
+    payload["unclipped_start_end"] = np.asarray(full_range, dtype=np.int64)
+    payload["bbox"] = full_bbox[:end - start + 1]
+    payload["start_end"] = np.array([start, end], dtype=np.int64)
+    # SAM features depend on both the selected range and the camera intrinsics.
+    for path in dependent_paths:
+        if os.path.exists(path):
+            os.remove(path)
+    np.savez(bbox_path, **payload)
+    print(f"  [bbox] processing frames [{start},{end}] ({end - start + 1} frames)")
+
+
 def forward_smpl_batch(body_model, rot6d, shapes, trans):
     B, L = trans.shape[:2]
     J = rot6d.shape[2]
@@ -856,10 +888,15 @@ class V2MInferenceEngine:
                       seed: int = 0, cfg_scale: float = 1.0,
                       max_frames: int = None,
                       vggt_frame_interval: int = 1,
+                      static_camera: bool = False,
                       person_selector: Callable = None,
                       progress_callback: Callable[[StageName, int, str], None] = None,
-                      cancel_check: Callable[[], None] = None) -> str:
+                      cancel_check: Callable[[], None] = None,
+                      sam_chunk_size: int = 16) -> str:
         """Video -> SMPL-H motion.
+
+        static_camera: skip VGGT and use a fixed pose with default intrinsics.
+        sam_chunk_size: frames per SAM body pass; both hands are batched together.
 
         person_selector: optional ``f(result, candidates, default) -> candidate index``,
         called after tracking when more than one person track (>= 15 frames) is found, e.g.
@@ -867,6 +904,8 @@ class V2MInferenceEngine:
         returning None / an out-of-range index keeps ``default``. Without it the longest /
         largest track is used.
         """
+        if isinstance(sam_chunk_size, bool) or not isinstance(sam_chunk_size, int) or sam_chunk_size < 1:
+            raise ValueError("sam_chunk_size must be a positive integer")
         from flowhmr.utils.runtime_video_processing import VideoProcessor
 
         def _pcb(stage_name, progress, desc):
@@ -881,8 +920,10 @@ class V2MInferenceEngine:
         os.makedirs(sub_dir, exist_ok=True)
 
         bbox_npz_path = os.path.join(sub_dir, f"{video_name}_bbox.npz")
-        feat_pt_path = os.path.join(sub_dir, f"{video_name}_sam3d_feat.pt")
-        vggt_camera_npz_path = os.path.join(sub_dir, f"{video_name}_vggt_camera.npz")
+        feature_suffix = "_static" if static_camera else ""
+        camera_mode = "static" if static_camera else "vggt"
+        feat_pt_path = os.path.join(sub_dir, f"{video_name}_sam3d_feat{feature_suffix}.pt")
+        camera_npz_path = os.path.join(sub_dir, f"{video_name}_{camera_mode}_camera.npz")
 
         print(f"\n  === Step 1: Bbox ===")
         _pcb(StageName.DETECTION, 0, "Starting bbox extraction")
@@ -933,39 +974,45 @@ class V2MInferenceEngine:
             print(f"  [bbox] saved -> {bbox_npz_path}  (shape={bbox_np.shape})")
             _pcb(StageName.DETECTION, 100, "Bbox done")
 
-        # ==== Step 2: VGGT Camera ====
-        print(f"\n  === Step 2: VGGT Camera ===")
-        _pcb(StageName.CAMERA, 0, "Starting VGGT camera extraction")
+        _limit_track_frames(
+            bbox_npz_path, max_frames,
+            dependent_paths=tuple(os.path.join(sub_dir, f"{video_name}_{suffix}") for suffix in (
+                "vggt_camera.npz", "static_camera.npz", "sam3d_feat.pt", "sam3d_feat_static.pt",
+            )),
+        )
+
+        # ==== Step 2: Camera ====
+        print(f"\n  === Step 2: {'Static' if static_camera else 'VGGT'} Camera ===")
+        _pcb(StageName.CAMERA, 0, "Using a static camera" if static_camera else "Starting VGGT camera extraction")
 
         with np.load(bbox_npz_path) as data:
             start_end_arr = data["start_end"].astype(np.int64)
-            bbox_track = data["bbox"].astype(np.float32)
         s, e = int(start_end_arr[0]), int(start_end_arr[1])
-        if max_frames is not None and max_frames > 0 and e >= max_frames:
-            clipped_end = max_frames - 1
-            if clipped_end < s:
-                raise ValueError(
-                    f"Selected person's track starts at frame {s}, beyond the max_frames limit {max_frames}"
-                )
-            bbox_track = bbox_track[:clipped_end - s + 1]
-            bbox_npz_path = os.path.join(sub_dir, f"{video_name}_bbox_max{max_frames}.npz")
-            np.savez(bbox_npz_path, bbox=bbox_track,
-                     start_end=np.array([s, clipped_end], dtype=np.int64))
-            e = clipped_end
-            print(f"  [bbox] clipped track to max_frames={max_frames}: frames {s}-{e}")
         t_track = e - s + 1
 
-        from flowhmr.utils.runtime_vggt_camera import extract_vggt_camera
-
-        _ = extract_vggt_camera(
-            working_video,
-            output_npz=vggt_camera_npz_path,
-            frame_range=(s, e),
-            expected_len=t_track,
-            device=self.device,
-            frame_interval=vggt_frame_interval,
+        from flowhmr.utils.runtime_vggt_camera import (
+            extract_vggt_camera, make_static_camera, _vggt_opencv_to_yup_rt,
         )
-        _pcb(StageName.CAMERA, 100, "VGGT camera ready")
+
+        camera_stamp = os.stat(camera_npz_path).st_mtime_ns if os.path.exists(camera_npz_path) else None
+        if static_camera:
+            meta = VideoProcessor.get_video_meta(working_video)
+            camera_result = make_static_camera(
+                (meta.height, meta.width), frame_range=(s, e), output_npz=camera_npz_path,
+            )
+        else:
+            camera_result = extract_vggt_camera(
+                working_video,
+                output_npz=camera_npz_path,
+                frame_range=(s, e),
+                expected_len=t_track,
+                device=self.device,
+                frame_interval=vggt_frame_interval,
+            )
+        if camera_stamp != os.stat(camera_npz_path).st_mtime_ns and os.path.exists(feat_pt_path):
+            os.remove(feat_pt_path)
+            print("  [sam] camera intrinsics changed, recomputing features")
+        _pcb(StageName.CAMERA, 100, "Static camera: estimation skipped" if static_camera else "VGGT camera ready")
 
         # ==== Step 3: SAM feature extraction ====
         print(f"\n  === Step 3: SAM Feature ===")
@@ -975,7 +1022,10 @@ class V2MInferenceEngine:
         if os.path.exists(feat_pt_path):
             try:
                 cached_tokens = torch.load(feat_pt_path, map_location="cpu", weights_only=True)
-                feature_cached = torch.is_tensor(cached_tokens) and cached_tokens.ndim > 0 and cached_tokens.shape[0] == t_track
+                feature_cached = (
+                    torch.is_tensor(cached_tokens)
+                    and cached_tokens.shape == (t_track, 3072)
+                )
                 del cached_tokens
             except Exception as exc:
                 print(f"  [sam] cached features could not be loaded ({exc}), recomputing")
@@ -984,7 +1034,7 @@ class V2MInferenceEngine:
             _pcb(StageName.FEATURE_EXTRACT, 100, "SAM cached")
         else:
             if os.path.exists(feat_pt_path):
-                print(f"  [sam] cached feature length mismatch, expected {t_track}; recomputing")
+                print(f"  [sam] invalid cached features, expected ({t_track}, 3072); recomputing")
             data = np.load(bbox_npz_path)
             bbox_track = data["bbox"].astype(np.float32)
             start_end_arr = data["start_end"].astype(np.int64)
@@ -1008,8 +1058,6 @@ class V2MInferenceEngine:
                 bbox_full[e + 1:] = bbox_track[-1]
 
             max_frames_needed = e + 1
-            if max_frames is not None and max_frames > 0:
-                max_frames_needed = min(max_frames_needed, max_frames)
 
             print(
                 f"  [sam] bbox.shape={bbox_track.shape}, start_end=[{s},{e}], "
@@ -1019,14 +1067,13 @@ class V2MInferenceEngine:
             bbox_full_t = torch.from_numpy(bbox_full).float()
             K_all, _ = self.proc.compute_camera_K(working_video)
 
-            camera_data = np.load(vggt_camera_npz_path)
-            K_track = torch.from_numpy(camera_data["K"].astype(np.float32))
+            K_track = torch.from_numpy(camera_result.K).to(torch.float32)
             assert K_track.shape[0] == t_track, (
-                f"VGGT K length {K_track.shape[0]} != track length {t_track}"
+                f"Camera K length {K_track.shape[0]} != track length {t_track}"
             )
             K_all = K_all.to(torch.float32)
             K_all[s:e + 1] = K_track
-            print(f"  [sam] using Stage-2 VGGT original-frame K for track frames: {tuple(K_track.shape)}")
+            print(f"  [sam] using Stage-2 {camera_mode} original-frame K for track frames: {tuple(K_track.shape)}")
 
             def _sam_progress(stage, current, total, message):
                 if total and total > 0:
@@ -1040,9 +1087,15 @@ class V2MInferenceEngine:
                 token_dim=3072,
                 max_frames=max_frames_needed,
                 progress_cb=_sam_progress,
+                frame_batch_size=sam_chunk_size,
             )
 
             tokens = tokens_full[s:e + 1].contiguous().cpu().to(torch.float32)
+            if tokens.shape != (t_track, 3072):
+                raise ValueError(
+                    f"SAM returned {tuple(tokens.shape)} for track [{s},{e}], "
+                    f"expected ({t_track}, 3072); incomplete features were not cached."
+                )
             torch.save(tokens, feat_pt_path)
             print(f"  [sam] saved -> {feat_pt_path}  (shape={tuple(tokens.shape)})")
             _pcb(StageName.FEATURE_EXTRACT, 100, "SAM done")
@@ -1065,15 +1118,8 @@ class V2MInferenceEngine:
         assert T == expected_len, f"sam_tokens.shape[0]={T} != expected {expected_len}"
         print(f"  [gen] T={T}, range=[{s},{e}], seed={seed}, cfg={cfg_scale}")
 
-        from flowhmr.utils.runtime_vggt_camera import load_or_extract_vggt_camera_rt
-
-        camera_RT = load_or_extract_vggt_camera_rt(
-            working_video,
-            vggt_camera_npz_path,
-            frame_range=(s, e),
-            expected_len=T,
-            device=self.device,
-            frame_interval=vggt_frame_interval,
+        camera_RT = _vggt_opencv_to_yup_rt(
+            torch.from_numpy(camera_result.camera_RT).to(torch.float32),
         )
         feature_dict = build_feature_dict(sam_tokens, camera_RT, self.device)
 
@@ -1156,4 +1202,3 @@ class V2MInferenceEngine:
 def _cb(progress_cb: Callable | None, progress: int, description: str):
     if progress_cb is not None:
         progress_cb(progress, description)
-

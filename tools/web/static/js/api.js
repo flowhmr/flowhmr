@@ -29,7 +29,7 @@ export const getMeta = (id) => json(`/api/jobs/${id}/meta`);
 export const getVertices = (id) => request(`/api/jobs/${id}/vertices`).then((r) => r.arrayBuffer());
 export const getFaces = (id) => request(`/api/jobs/${id}/faces`).then((r) => r.arrayBuffer());
 export const selectPerson = (id, person) => postJson(`/api/jobs/${id}/select`, { person });
-export const rerunJob = (id, params) => postJson(`/api/jobs/${id}/rerun`, params);
+export const rerunJob = (id, params) => postJson(`/api/jobs/${id}/rerun`, params).then((res) => res.job_id);
 export const cancelJob = (id) => postJson(`/api/jobs/${id}/cancel`);
 
 export const videoUrl = (id) => `/api/jobs/${id}/video`;

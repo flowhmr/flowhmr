@@ -39,7 +39,6 @@ STAGES = [
 STAGE_INDEX = {name: i for i, (name, _, _) in enumerate(STAGES)}
 REQUIRED_FILES = [
     "ckpts/yolox/yolox_l.pth",
-    "ckpts/vggt-omega/vggt_omega_1b_512.pt",
     "ckpts/sam-3d-body-dinov3/model.ckpt",
     "ckpts/sam-3d-body-dinov3/assets/mhr_model.pt",
     "assets/body_models/smplh/neutral/model.npz",
@@ -67,9 +66,8 @@ class JobCancelled(Exception):
 
 # --------------------------------------------------------------------------- engine
 def load_engine(args):
-    """Load all models once: YOLOX, SAM-3D-Body, VGGT-Omega, FlowHMR, SMPL-H."""
+    """Load shared models; VGGT is loaded by the first dynamic-camera job."""
     from flowhmr.pipeline.v2m_inference import V2MInferenceEngine
-    from flowhmr.utils.runtime_vggt_camera import DEFAULT_VGGT_OMEGA_CKPT, _load_vggt_model
 
     model_cfg = args.model_cfg
     if model_cfg is None:
@@ -80,7 +78,6 @@ def load_engine(args):
     engine = V2MInferenceEngine.build(
         ckpt=args.ckpt, model_cfg_path=model_cfg, device=args.device,
     )
-    _load_vggt_model(DEFAULT_VGGT_OMEGA_CKPT, engine.device)  # warm cache, avoids first-job delay
     return engine
 
 
@@ -98,7 +95,8 @@ def get_postprocess():
 # Defaults for the page's Settings card; everything is editable per run in the UI.
 DEFAULT_PARAMS = {
     "seed": 0, "cfg_scale": 1.0, "steps": 20, "max_frames": 900, "vggt_interval": 1,
-    "postprocess": False, "manual_select": True, "auto_frames": False,
+    "sam_chunk_size": 16,
+    "postprocess": False, "manual_select": True, "auto_frames": False, "static_camera": False,
 }
 
 
@@ -130,6 +128,15 @@ def parse_params(src, base=None):
             raise ValueError(f"{key} must be between {lo} and {hi}")
         return value
 
+    def positive_integer(key):
+        raw = src.get(key)
+        if raw is None or raw == "":
+            raw = base[key]
+        value = int(raw.strip()) if isinstance(raw, str) and raw.strip().isdecimal() else raw
+        if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+            raise ValueError(f"{key} must be a positive integer")
+        return value
+
     return {
         "seed": number("seed", int, 0, 2 ** 31 - 1),
         "cfg_scale": number("cfg_scale", float, 0.0, 10.0),
@@ -137,8 +144,10 @@ def parse_params(src, base=None):
         "max_frames": number("max_frames", int, 30, 10000),
         "auto_frames": _to_bool(src.get("auto_frames"), base["auto_frames"]),
         "vggt_interval": number("vggt_interval", int, 1, 120),
+        "sam_chunk_size": positive_integer("sam_chunk_size"),
         "postprocess": _to_bool(src.get("postprocess"), base["postprocess"]),
         "manual_select": _to_bool(src.get("manual_select"), base.get("manual_select", True)),
+        "static_camera": _to_bool(src.get("static_camera"), base["static_camera"]),
     }
 
 
@@ -226,14 +235,20 @@ def restore_jobs():
 
         if job.get("status") in ("queued", "running", "waiting_user", "cancel_requested", "uploading"):
             cancelled = job["status"] == "cancel_requested"
+            interrupted_at = time.time()
             job.update(status="cancelled" if cancelled else "failed",
                        message="Run stopped when FlowHMR restarted." if cancelled
                        else "Run interrupted when FlowHMR restarted.",
                        error=None if cancelled else "The server restarted before this run finished.",
-                       finished=time.time())
+                       finished=interrupted_at)
             for stage in job.get("stages", []):
-                if stage.get("status") == "running":
-                    stage["status"] = "cancelled" if cancelled else "failed"
+                if stage.get("status") in ("running", "waiting_user"):
+                    paused_at = stage.pop("paused_at", None)
+                    if paused_at is not None:
+                        stage["paused_seconds"] = stage.get("paused_seconds", 0.0) + max(
+                            0.0, interrupted_at - paused_at,
+                        )
+                    stage.update(status="cancelled" if cancelled else "failed", end=interrupted_at)
         job["params"] = {**default_params(), **job.get("params", {})}
         job.setdefault("stages", [])
         with JOBS_LOCK:
@@ -252,6 +267,10 @@ def new_job(filename, params, ext):
         "stages": [{"name": n, "label": l, "detail": d, "status": "pending", "progress": 0,
                     "start": None, "end": None} for n, l, d in STAGES],
     }
+    if params.get("static_camera", False):
+        job["stages"][STAGE_INDEX["camera"]].update(
+            label="Static camera", detail="Camera estimation skipped; fixed camera pose",
+        )
     os.makedirs(job_dir(job_id), exist_ok=True)
     with JOBS_LOCK:
         JOBS[job_id] = job
@@ -361,20 +380,29 @@ def run_job(job_id):
         with JOBS_LOCK:
             SELECTIONS[job_id] = slot
             job = JOBS[job_id]
-            job["stages"][STAGE_INDEX["detection"]]["status"] = "waiting_user"
+            job["stages"][STAGE_INDEX["detection"]].update(
+                status="waiting_user", paused_at=time.time(),
+            )
             job.update(status="waiting_user", candidates=candidates, default_person=default_idx,
                        video_size=[result.width, result.height],
                        message=f"{len(candidates)} people detected - pick the person to reconstruct")
             _persist_job_locked(job)
-        picked = slot["event"].wait(SELECT_TIMEOUT_S)
+        try:
+            picked = slot["event"].wait(SELECT_TIMEOUT_S)
+        finally:
+            with JOBS_LOCK:
+                stage = JOBS[job_id]["stages"][STAGE_INDEX["detection"]]
+                stage["paused_seconds"] = stage.get("paused_seconds", 0.0) + max(
+                    0.0, time.time() - stage.pop("paused_at"),
+                )
+                stage["status"] = "running"
+                SELECTIONS.pop(job_id, None)
         choice = slot["choice"] if picked and slot["choice"] is not None else default_idx
         with JOBS_LOCK:
             if job_id in CANCEL_REQUESTS:
-                SELECTIONS.pop(job_id, None)
+                JOBS[job_id]["stages"][STAGE_INDEX["detection"]]["end"] = time.time()
                 raise JobCancelled()
-            SELECTIONS.pop(job_id, None)
             job = JOBS[job_id]
-            job["stages"][STAGE_INDEX["detection"]]["status"] = "running"
             job.update(status="running", selected_person=choice, selection_auto=not picked,
                        message=f"Person #{choice} selected" if picked else "No selection - using default person")
             _persist_job_locked(job)
@@ -386,6 +414,8 @@ def run_job(job_id):
         input_video(job_id), job_dir(job_id), seed=params["seed"], cfg_scale=params["cfg_scale"],
         max_frames=None if params["auto_frames"] else params["max_frames"],
         vggt_frame_interval=params["vggt_interval"],
+        static_camera=params.get("static_camera", False),
+        sam_chunk_size=params.get("sam_chunk_size", DEFAULT_PARAMS["sam_chunk_size"]),
         person_selector=select_person if params.get("manual_select", True) else None,
         progress_callback=on_progress,
         cancel_check=lambda: _raise_if_cancelled(job_id),
@@ -551,7 +581,7 @@ def api_upload():
 
 @app.route("/api/jobs/<job_id>/rerun", methods=["POST"])
 def api_rerun(job_id):
-    """New job on the same video; cached detection / camera / SAM features are reused."""
+    """New job on the same video; reuse caches compatible with its camera and range."""
     src = get_job(job_id)
     if src["status"] in ("queued", "running", "waiting_user", "cancel_requested"):
         return jsonify({"error": "job is still running"}), 409
@@ -567,12 +597,26 @@ def api_rerun(job_id):
         dst_sub = os.path.join(job_dir(job["id"]), SUB)
         os.makedirs(dst_sub, exist_ok=True)
         skip = (f"{SUB}_seed",)  # generated motion is recomputed
-        if _to_bool(body.get("reselect_person"), False):
+        reselect = _to_bool(body.get("reselect_person"), False)
+        camera_changed = params["static_camera"] != src["params"].get("static_camera", False)
+        old_limit = None if src["params"].get("auto_frames", False) else src["params"]["max_frames"]
+        new_limit = None if params["auto_frames"] else params["max_frames"]
+        range_changed = old_limit != new_limit
+        if reselect:
             # per-person caches are invalidated so detection runs and the user picks again
-            skip += (f"{SUB}_bbox.npz", f"{SUB}_sam3d_feat.pt", f"{SUB}_vggt_camera.npz")
+            skip += (f"{SUB}_bbox.npz",)
+        if reselect or camera_changed or range_changed:
+            # SAM conditioning also depends on camera intrinsics, not just frame count.
+            skip += (f"{SUB}_sam3d_feat.pt", f"{SUB}_vggt_camera.npz",
+                     f"{SUB}_sam3d_feat_static.pt", f"{SUB}_static_camera.npz")
+        elif not params["static_camera"] and params["vggt_interval"] != src["params"]["vggt_interval"]:
+            skip += (f"{SUB}_sam3d_feat.pt", f"{SUB}_vggt_camera.npz")
+        if params["sam_chunk_size"] != src["params"].get("sam_chunk_size", DEFAULT_PARAMS["sam_chunk_size"]):
+            skip += (f"{SUB}_sam3d_feat.pt", f"{SUB}_sam3d_feat_static.pt")
         for name in os.listdir(src_sub):
-            if not name.startswith(skip):
-                shutil.copy2(os.path.join(src_sub, name), dst_sub)
+            path = os.path.join(src_sub, name)
+            if not name.startswith(skip) and os.path.isfile(path):
+                shutil.copy2(path, dst_sub)
     enqueue(job)
     return jsonify({"job_id": job["id"]})
 
