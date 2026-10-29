@@ -31,8 +31,11 @@ Workflow: [web_demo.md](web_demo.md).
 
 Everything else is set per run in the page's **Settings** card: sampling seed
 (`0`), CFG scale (`1.0`), flow-matching ODE steps (`20`), max frames at 30 fps
-(`900` = 30 seconds), camera frame stride (`1`), manual person selection (on)
-and post-processing (off).
+(`900` = 30 seconds), automatic full-video frame detection (off), camera frame
+stride (`1`), static camera (off), SAM chunk (`16` frames; hand batch is automatically
+twice the chunk size), manual person selection (on) and post-processing (off).
+Query batching and SAM compilation are off by default; optional
+[acceleration settings](web_demo.md#adjust-settings) apply at service startup.
 
 ```bash
 python app.py --device cuda:0 --port 8080
@@ -50,10 +53,12 @@ Workflow: [inference.md](inference.md).
 | `--model_cfg` | auto | Uses sibling `config.yml`; otherwise `configs/base/model_basic05B.yml` |
 | `--device` | `cuda` | Device for the models |
 | `--seed` | `0` | Sampling seed; nonzero seeds add `_seed<N>` to the result name |
-| `--cfg_scale` | `1.0` | Classifier-free guidance scale (the Web option is named `--cfg`) |
+| `--cfg_scale` | `1.0` | Classifier-free guidance scale; **CFG scale** in the Web Settings |
 | `--steps` | from config (`20` in the bundled config) | Override flow-matching ODE steps |
 | `--postprocess` | off | Enable temporal smoothing and foot/ground-contact IK cleanup |
-| `--vggt_interval` | `1` | Run camera estimation on every N-th frame |
+| `--vggt_interval` | `1` | Run camera estimation on every N-th frame; applies only when static camera is off |
+| `--static_camera` | off | Skip VGGT and use a fixed camera with approximate intrinsics; no VGGT weights required |
+| `--sam_chunk_size` | `16` | Frames per SAM body batch; hand batch is automatically twice this size |
 | `--overwrite` | off | Recompute cached video preprocessing, detection, camera, and SAM features |
 
 Results are saved under `output/<video stem>/<checkpoint stem>.npz` by default.
@@ -67,16 +72,38 @@ python run_v2m_demo_generation.py assets/example/example.mp4 \
 
 ## Camera settings
 
-Both launchers accept `--vggt_interval`. Increasing it to `10` or `30` makes
-VGGT-Omega process fewer frames and interpolates the camera between them. This
-can help with long videos or limited GPU memory, but camera motion is sampled
-less frequently; check the reconstruction quality for your input.
+For a fixed camera without camera motion or zoom, use CLI `--static_camera`
+or enable **Static camera** in the Web Settings. This skips VGGT entirely and
+uses constant camera poses (identity relative rotation) with SAM's default
+approximate intrinsics: `fx = fy = sqrt(width² + height²)`, `cx = width / 2`,
+`cy = height / 2`. VGGT weights are not needed in this mode. Static and dynamic
+camera/SAM caches are stored separately.
+
+With static camera off, increase CLI `--vggt_interval` or Web **VGGT stride**
+to `10` or `30` to make VGGT-Omega process fewer frames and interpolate the camera
+between them. This can help with long videos or limited GPU memory, but camera
+motion is sampled less frequently; check the reconstruction quality for your
+input. The interval has no effect in static camera mode.
 
 Other camera reconstruction approaches include
 [ViPE](https://github.com/nv-tlabs/vipe),
 [DA3-Streaming](https://github.com/ByteDance-Seed/Depth-Anything-3/tree/main/da3_streaming),
 and [DROID-SLAM](https://github.com/princeton-vl/DROID-SLAM). These require a
-separate integration; the current launchers use VGGT-Omega.
+separate integration; the current launchers use VGGT-Omega for dynamic cameras.
+
+## Motion attention settings
+
+These model settings are shared by CLI and Web inference. See
+[acceleration options](inference.md#acceleration) for launch settings.
+
+| Model setting | Environment variable | Default | Description |
+|---|---|---|---|
+| `attention_backend` | `FLOWHMR_ATTENTION_BACKEND` | `original` | Set `query_batched` for lower-memory local attention during evaluation |
+| `attention_query_chunk_size` | `FLOWHMR_ATTENTION_QUERY_CHUNK_SIZE` | `256` | Positive number of queries per attention batch |
+
+Model settings belong under `network_module_args` and override the respective
+environment variables. The new backend applies to `narrowband_v2m` evaluation;
+training and other attention modes keep the original path.
 
 ## Training
 

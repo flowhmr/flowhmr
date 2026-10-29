@@ -6,7 +6,14 @@
 <a href="https://huggingface.co/fafsaf1/flowhmr-0.46B"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Model-blue" alt="Hugging Face Model"></a>
 </div>
 
-## Release Plan
+## Overview
+
+[Changelog](docs/CHANGELOG.md)
+
+- **[2026-10-30]** Updated inference acceleration: approximately **10× faster SAM feature extraction**
+  (with compile) and **over 5× faster end-to-end inference** (static camera, with compile) on our 300-frame A100 benchmark.
+  See the [resource and performance report](docs/performance.md).
+  Get started with [CLI inference](docs/inference.md) or the [Web demo](docs/web_demo.md).
 
 We are releasing the full workflow, from data synthesis to training and evaluation, step by step.
 
