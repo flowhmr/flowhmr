@@ -65,6 +65,8 @@ at startup. Static-camera jobs do not require its weights.
 ## Adjust settings
 
 All run settings are in the page's Settings card; see [params.md](params.md#web-demo).
+**Post-processing** enables RGBMocap contact planning and anatomical IK (off by default;
+requires the [optional dependency](install.md#optional-post-processing)).
 Defaults: **SAM chunk = 16** frames; hand batch is automatically **32** crops.
 Query batching and compile are **off**. Set **SAM chunk** to `32` for body32/hand64.
 Changing the chunk size on re-run recomputes SAM

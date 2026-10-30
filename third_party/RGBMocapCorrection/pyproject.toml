@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rgbmocap-correction"
+version = "0.1.0"
+description = "RGB MoCap contact correction algorithms packaged for FlowHMR"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {file = "LICENSE"}
+dependencies = ["numpy", "scipy", "motion-correction>=1.0.0"]
+
+[tool.setuptools]
+packages = ["rgbmocap_correction"]
+
+[tool.setuptools.data-files]
+"share/rgbmocap-correction" = ["UPSTREAM.json", "THIRD_PARTY_NOTICES.md"]

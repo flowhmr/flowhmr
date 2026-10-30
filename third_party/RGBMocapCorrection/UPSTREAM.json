@@ -1,0 +1,97 @@
+{
+  "repository": "https://github.com/toyxyz/toyxyz_RGBMocap",
+  "commit": "941acffbd76129a4cf5a2e49bb3c8a8fbe9b5b22",
+  "subdirectory": "mocap",
+  "package": "rgbmocap_correction",
+  "adaptations": [
+    "Retain computational correction functions; omit project storage, GUI, exporters and SMPL-X application entry points.",
+    "Rename mocap package imports to package-relative imports.",
+    "Load the installed motion_correction._motion_correction native extension instead of a Windows-only .pyd path.",
+    "No numerical algorithm changes."
+  ],
+  "files": [
+    {
+      "source": "mocap/correction.py",
+      "source_sha256": "7b25e1eb57ed810bdf995a918d7b7633e7e558c25f982ba273f7d64783105ec3",
+      "included": "through correct_arrays"
+    },
+    {
+      "source": "mocap/correction_settings.py",
+      "source_sha256": "83d0a23eafe9a40a6da6acaee3581be81b54a1e9f394c8a08f862aff7b46f51a",
+      "included": [
+        "correction_options"
+      ]
+    },
+    {
+      "source": "mocap/flow_correction.py",
+      "source_sha256": "6fb33f433ece03ef19099a86d803a31a2b67ac23c70aa95a892906afc20e4d7a",
+      "included": [
+        "contact_probabilities",
+        "SoleGeometry"
+      ]
+    },
+    {
+      "source": "mocap/flow_export.py",
+      "source_sha256": "e2af2c1ab04f09af16e15be5b5c8238c4950ea16fafef2e4f9be5580b02cde8c",
+      "included": [
+        "proper_rotations"
+      ]
+    },
+    {
+      "source": "mocap/foot_contacts.py",
+      "source_sha256": "8b5c18389b9bdd82b840da32e2df2f72dc4639367eed7a31a8030e1c7f0da601",
+      "included": [
+        "normalize_ranges",
+        "segment_ranges"
+      ]
+    },
+    {
+      "source": "mocap/mixamo_rig.py",
+      "source_sha256": "fc3031524d76e4057003315cc46a209d5f71ad1d8e08b2bef78d49a41db09656",
+      "included": [
+        "unit",
+        "align"
+      ]
+    },
+    {
+      "source": "mocap/contact_trajectory.py",
+      "source_sha256": "3a28da4a3b7e10ce1d0b453f3e5791638dfd64df8f62535137cd267c354c9c55",
+      "included": "complete module"
+    },
+    {
+      "source": "mocap/contact_pose_plan.py",
+      "source_sha256": "c442252def49642c97925da0ea06d0f4aa1c61560629ff3e5bcd70b8aeb7cb6b",
+      "included": "complete module"
+    },
+    {
+      "source": "mocap/contact_temporal_root.py",
+      "source_sha256": "cabc2147dd0bcf47286699fa21ab5885d741412bc666e0f00d40fc157b125956",
+      "included": "complete module"
+    },
+    {
+      "source": "mocap/contact_arm_plan.py",
+      "source_sha256": "147f0f2b233628bd9a3c4fdc11a0884eb09e37ea6dc4677b4f3f79f6a4f363f8",
+      "included": "complete module"
+    },
+    {
+      "source": "mocap/anatomical_ik.py",
+      "source_sha256": "960fa6f0b59f70ceeaeceae1fe9fde4a05c20fa22a169f01a68b7f6f9c6c50a9",
+      "included": "complete module"
+    },
+    {
+      "source": "mocap/multilevel_contacts.py",
+      "source_sha256": "02be19c3307f329eb7abe6e48ec796f2dee5d5322d1cd66405f0c0e3e734e988",
+      "included": "complete module"
+    },
+    {
+      "source": "mocap/hand_lock.py",
+      "source_sha256": "19141e81e589c01c75862acec9caa99e472549c6cd9eb8abcf2e8110b61fab80",
+      "included": "complete module"
+    },
+    {
+      "source": "mocap/palm_contact.py",
+      "source_sha256": "6953468ba5cf972120bedc5391dc7c763eb7d3a422de34cef320ec8916696776",
+      "included": "complete module"
+    }
+  ]
+}

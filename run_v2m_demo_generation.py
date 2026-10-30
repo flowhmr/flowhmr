@@ -102,7 +102,7 @@ def parse_args():
     p.add_argument("--steps", type=int, default=None,
                    help="flow-matching ODE steps (default: from config, 20)")
     p.add_argument("--postprocess", action="store_true",
-                   help="apply temporal smoothing + foot-contact / ground-contact IK cleanup "
+                   help="apply RGBMocap contact planning and anatomical IK (see docs/install.md) "
                         "(off: raw model output)")
     p.add_argument("--vggt_interval", type=int, default=1,
                    help="run VGGT-Omega on every N-th frame (camera interpolated in between); "

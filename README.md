@@ -130,6 +130,7 @@ We thank the authors of these projects for releasing their code and models:
 - [VGGT-Omega](https://github.com/facebookresearch/vggt-omega): camera estimation
 - [SAM 3D Body](https://github.com/facebookresearch/sam-3d-body): body features
 - [YOLOX](https://github.com/Megvii-BaseDetection/YOLOX): person detection
+- [Kimodo](https://github.com/nv-tlabs/kimodo) and [toyxyz_RGBMocap](https://github.com/toyxyz/toyxyz_RGBMocap): motion and contact correction
 
 ## Citation
 

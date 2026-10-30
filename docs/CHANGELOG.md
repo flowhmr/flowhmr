@@ -15,6 +15,9 @@ Notable changes to FlowHMR.
 
 ### Changed
 
+- Replace optional post-processing with [toyxyz_RGBMocap correction](https://github.com/toyxyz/toyxyz_RGBMocap),
+  based on [Kimodo MotionCorrection](https://github.com/nv-tlabs/kimodo): contact planning,
+  pelvis adjustment and anatomical IK, shared by CLI and Web.
 - Faster SAM feature extraction with GPU crops and batched body/hand inference.
 - Around 10× faster SAM extraction and over 5× faster end-to-end inference (static camera, compiled)
   on a 300-frame A100 benchmark; see the [performance report](performance.md).

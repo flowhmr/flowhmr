@@ -67,6 +67,25 @@ still saved and the `.fbx` export is skipped.
 pip install fbxsdkpy==2020.1.post2 --extra-index-url https://gitlab.inria.fr/api/v4/projects/18692/packages/pypi/simple
 ```
 
+### Optional post-processing
+
+Install the bundled [RGBMocap correction](../third_party/RGBMocapCorrection) and its
+[Kimodo native solver](../third_party/KimodoMotionCorrection). The native solver
+requires a C++17 compiler and CMake ≥ 3.15. Enable correction with CLI `--postprocess`
+or the Web **Post-processing** toggle (both off by default).
+
+```bash
+pip install pybind11==2.11.1
+pip install --no-build-isolation --no-deps ./third_party/KimodoMotionCorrection
+pip install --no-build-isolation --no-deps ./third_party/RGBMocapCorrection
+```
+
+CMake uses an installed Eigen ≥ 3.3 or downloads Eigen 3.4.0. For an offline build,
+prefix the second command with `CMAKE_ARGS="-DEigen3_DIR=/path/to/eigen/share/eigen3/cmake"`.
+
+Uses RGBMocap's **normal**, **flat ground**, **automatic floor**, **foot lock on**,
+**hand lock off** defaults, including contact planning, pelvis correction and anatomical IK.
+
 ## 3. Simulation environment (full pipeline only)
 
 **Apply the PHC+ patches** once:

@@ -26,7 +26,7 @@ python run_v2m_demo_generation.py a.mp4 b.mov my_videos/
 | `--static_camera` | off | Skip VGGT for a fixed camera |
 | `--vggt_interval` | `1` | Estimate camera every N frames; ignored with `--static_camera` |
 | `--sam_chunk_size` | `16` | Frames per SAM body batch; hand batch is automatically twice this size |
-| `--postprocess` | off | Enable smoothing and foot-contact cleanup |
+| `--postprocess` | off | Enable RGBMocap contact planning and anatomical IK ([installation](install.md#optional-post-processing)) |
 | `--overwrite` | off | Recompute cached preprocessing and features |
 
 ```bash

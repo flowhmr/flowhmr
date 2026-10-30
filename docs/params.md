@@ -55,7 +55,7 @@ Workflow: [inference.md](inference.md).
 | `--seed` | `0` | Sampling seed; nonzero seeds add `_seed<N>` to the result name |
 | `--cfg_scale` | `1.0` | Classifier-free guidance scale; **CFG scale** in the Web Settings |
 | `--steps` | from config (`20` in the bundled config) | Override flow-matching ODE steps |
-| `--postprocess` | off | Enable temporal smoothing and foot/ground-contact IK cleanup |
+| `--postprocess` | off | Enable RGBMocap contact planning and anatomical IK ([installation](install.md#optional-post-processing)) |
 | `--vggt_interval` | `1` | Run camera estimation on every N-th frame; applies only when static camera is off |
 | `--static_camera` | off | Skip VGGT and use a fixed camera with approximate intrinsics; no VGGT weights required |
 | `--sam_chunk_size` | `16` | Frames per SAM body batch; hand batch is automatically twice this size |

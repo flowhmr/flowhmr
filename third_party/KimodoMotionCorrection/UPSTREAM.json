@@ -1,0 +1,9 @@
+{
+  "repository": "https://github.com/nv-tlabs/kimodo",
+  "commit": "e1c219c99b4b94ba48be1fb6a1cbc64ecee4c954",
+  "subdirectory": "MotionCorrection",
+  "patches": [
+    "Explicit contact anchors for bounded windows; input validation and left toe height fix.",
+    "RGBMoCapAnatomical.h: optional native source-relative knee-axis contacts with preserved global ankle rotations. Generic upstream keyframe/toe paths retained. Anatomical mode rejects unsupported mixed constraints instead of silently overwriting them."
+  ]
+}
