@@ -4,12 +4,15 @@
 <a href="https://arxiv.org/abs/2610.03691"><img src="https://img.shields.io/badge/arXiv-2610.03691-b31b1b" alt="arXiv"></a>
 <a href="https://flowhmr.github.io/"><img src="https://img.shields.io/badge/Project_Page-FlowHMR-green" alt="Project Page"></a>
 <a href="https://huggingface.co/fafsaf1/flowhmr-0.46B"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Model-blue" alt="Hugging Face Model"></a>
+<a href="https://huggingface.co/spaces/fafsaf1/FlowHMR"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Demo-yellow" alt="Hugging Face Demo Space"></a>
 </div>
 
 ## Overview
 
 [Changelog](docs/CHANGELOG.md)
 
+- **[2026-10-31]** Our [Hugging Face demo](https://huggingface.co/spaces/fafsaf1/FlowHMR) is now live!
+  Reconstruct and preview 3D motion in your browser, with NPZ/FBX export.
 - **[2026-10-30]** Updated inference acceleration: approximately **10× faster SAM feature extraction**
   (with compile) and **over 5× faster end-to-end inference** (static camera, with compile) on our 300-frame A100 benchmark.
   See the [resource and performance report](docs/performance.md).
@@ -22,7 +25,7 @@ We are releasing the full workflow, from data synthesis to training and evaluati
 - [x] Web demo ([guide](docs/web_demo.md))
 - [x] Synthetic data generation code ([guide](data/rendering_data/README.md))
 - [x] Wild-4K evaluation clip list ([list](data/wild4k/README.md))
-- [ ] Hugging Face demo
+- [x] Hugging Face demo ([Space](https://huggingface.co/spaces/fafsaf1/FlowHMR))
 
 ## Model Zoo
 

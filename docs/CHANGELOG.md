@@ -2,6 +2,12 @@
 
 Notable changes to FlowHMR.
 
+## [2026-10-31]
+
+### Added
+
+- [Hugging Face demo](https://huggingface.co/spaces/fafsaf1/FlowHMR) on ZeroGPU, with interactive 3D motion preview and NPZ/FBX export.
+
 ## [2026-10-30]
 
 ### Added
