@@ -1,19 +1,17 @@
 <div align="center">
 <a href="https://flowhmr.github.io/"><img src="assets/FlowHMR-logo-tagline.svg" alt="FlowHMR: Physically Plausible Motion Capture from Video" width="880"></a>
 
+<a href="https://huggingface.co/spaces/fafsaf1/FlowHMR"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Demo-yellow" alt="Hugging Face Demo Space"></a>
 <a href="https://arxiv.org/abs/2610.03691"><img src="https://img.shields.io/badge/arXiv-2610.03691-b31b1b" alt="arXiv"></a>
 <a href="https://flowhmr.github.io/"><img src="https://img.shields.io/badge/Project_Page-FlowHMR-green" alt="Project Page"></a>
 <a href="https://huggingface.co/fafsaf1/flowhmr-0.46B"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Model-blue" alt="Hugging Face Model"></a>
-<a href="https://huggingface.co/spaces/fafsaf1/FlowHMR"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Demo-yellow" alt="Hugging Face Demo Space"></a>
 </div>
 
 ## Overview
 
-[Changelog](docs/CHANGELOG.md)
-
-- **[2026-10-31]** Our [Hugging Face demo](https://huggingface.co/spaces/fafsaf1/FlowHMR) is now live!
+- 🎉🎉🎉 [2026-10-31] Our [Hugging Face demo](https://huggingface.co/spaces/fafsaf1/FlowHMR) is now live!
   Reconstruct and preview 3D motion in your browser, with NPZ/FBX export.
-- **[2026-10-30]** Updated inference acceleration: approximately **10× faster SAM feature extraction**
+- 🚀🚀🚀 [2026-10-30] Updated inference acceleration: approximately **10× faster SAM feature extraction**
   (with compile) and **over 5× faster end-to-end inference** (static camera, with compile) on our 300-frame A100 benchmark.
   See the [resource and performance report](docs/performance.md).
   Get started with [CLI inference](docs/inference.md) or the [Web demo](docs/web_demo.md).
