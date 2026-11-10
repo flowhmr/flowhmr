@@ -138,14 +138,11 @@ We thank the authors of these projects for releasing their code and models:
 If you find FlowHMR useful in your research, please cite:
 
 ```bibtex
-@misc{wang2026flowhmr,
-      title={FlowHMR: Physically Plausible Motion Capture from Video},
-      author={Zhanke Wang and Chengfeng Zhao and Qing Shuai and Jingzhong Lin and Heng Li and Zeyu Ling and Yuxin Wen and Jing Li and Di Kang and Chunchao Guo and Linchao Bao},
-      year={2026},
-      eprint={2610.03691},
-      archivePrefix={arXiv},
-      primaryClass={cs.CV},
-      url={https://arxiv.org/abs/2610.03691},
+@article{wang2026flowhmr,
+  title={FlowHMR: Physically Plausible Motion Capture from Video},
+  author={Wang, Zhanke and Zhao, Chengfeng and Shuai, Qing and Lin, Jingzhong and Li, Heng and Ling, Zeyu and Wen, Yuxin and Li, Jing and Kang, Di and Guo, Chunchao and others},
+  journal={arXiv preprint arXiv:2610.03691},
+  year={2026}
 }
 ```
 
