@@ -11,6 +11,7 @@ Pipeline per job (runs on one GPU, jobs are queued):
 import argparse
 import copy
 import json
+import mimetypes
 import os
 import queue
 import re
@@ -24,6 +25,12 @@ import uuid
 import numpy as np
 import torch
 from flask import Flask, abort, jsonify, request, send_file, send_from_directory
+
+# On Windows, mimetypes reads the registry, where .js is sometimes mapped to text/plain.
+# Browsers refuse to run ES module scripts served with that type, so the page loads but
+# nothing is interactive. Register the correct types explicitly.
+mimetypes.add_type("application/javascript", ".js")
+mimetypes.add_type("application/javascript", ".mjs")
 
 WEB_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(os.path.dirname(WEB_DIR))
