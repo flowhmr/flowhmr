@@ -12,6 +12,10 @@ import torch
 import yaml
 from torch import Tensor
 
+from flowhmr.utils.perception_options import (
+    CAMERA_WEIGHTS, DEFAULT_CAMERA, DEFAULT_DETECTOR, DETECTOR_WEIGHTS, camera_cache_suffixes,
+)
+
 
 # Enums & Dataclasses
 
@@ -155,6 +159,16 @@ def build_feature_dict(sam_tokens: Tensor, camera_RT: Tensor, device: torch.devi
     camera_R = camera_R @ camera_R[0].transpose(-1, -2)
     camera_R = camera_R.reshape(T, 9).unsqueeze(0)
     return {"feature": feature, "camera_R": camera_R}
+
+
+def _bbox_cache_matches(data, detector_backend, *, inclusive):
+    """Distinguish raw-video (inclusive) and staged (exclusive) bbox caches."""
+    if str(data.get("detector_backend", "yolox")) != detector_backend:
+        return False
+    if "start_end" not in data:
+        return not inclusive
+    start, end = data["start_end"]
+    return end - start + int(inclusive) == len(data["bbox"])
 
 
 def _limit_track_frames(bbox_path: str, max_frames: int | None,
@@ -482,21 +496,16 @@ class V2MInferenceEngine:
               validation_steps: int = None,
               postprocess: bool = False,
               sam_device_ids: list[int] | None = None,
-              sam_base_port: int = 29500) -> "V2MInferenceEngine":
+              sam_base_port: int = 29500, detector_backend: str = DEFAULT_DETECTOR) -> "V2MInferenceEngine":
         device_obj = torch.device(device)
 
         print("[V2MInferenceEngine] Loading models...")
         t0 = time.time()
 
-        from flowhmr.utils.runtime_video_processing import (
-            VideoProcessor,
-            build_human_detector,
-        )
+        from flowhmr.utils.runtime_video_processing import VideoProcessor
         from flowhmr.core.bodymodels.smpl_skeleton import SMPLSkeleton, SMPLMesh
 
-        detector = build_human_detector(device_obj)
-        proc = VideoProcessor(detector=detector)
-        print(f"  YOLOX detector loaded")
+        proc = VideoProcessor(backend=detector_backend, device=device_obj)
 
         if sam_device_ids and len(sam_device_ids) > 1:
             from flowhmr.utils.runtime_sam_worker import SamWorkerPool
@@ -585,17 +594,16 @@ class V2MInferenceEngine:
         bbox_npz_path = os.path.join(sub_dir, f"{video_name}_bbox.npz")
         camera_npz_path = os.path.join(sub_dir, f"{video_name}_camera.npz")
 
+        backend = getattr(self.proc, "backend", "yolox")
         if os.path.exists(bbox_npz_path) and os.path.exists(camera_npz_path):
-            print(f"  [detection] CACHED, loading from npz")
-            bbox_data = np.load(bbox_npz_path)
-            bbox_xyxy = torch.from_numpy(bbox_data["bbox"])
-            K_all = torch.from_numpy(np.load(camera_npz_path)["K"])
-            frame_range = None
-            if "frame_range" in bbox_data:
-                fr = bbox_data["frame_range"]
-                frame_range = (int(fr[0]), int(fr[1]))
-            _cb(progress_cb, 100, "Detection cached")
-            return {"bbox_xyxy": bbox_xyxy, "K_all": K_all, "frame_range": frame_range}
+            with np.load(bbox_npz_path) as data:
+                if _bbox_cache_matches(data, backend, inclusive=False):
+                    bbox_xyxy = torch.from_numpy(data["bbox"])
+                    with np.load(camera_npz_path) as camera:
+                        K_all = torch.from_numpy(camera["K"])
+                    frame_range = tuple(map(int, data["frame_range"])) if "frame_range" in data else None
+                    _cb(progress_cb, 100, "Detection cached")
+                    return {"bbox_xyxy": bbox_xyxy, "K_all": K_all, "frame_range": frame_range}
 
         _cb(progress_cb, 10, "Running human detection + tracking")
         t0 = time.time()
@@ -607,7 +615,7 @@ class V2MInferenceEngine:
             print(f"  [detection] No tracks found, falling back to full-image bbox")
             bbox_xyxy = self.proc.compute_bboxes(working_video)
             K_all, _ = self.proc.compute_camera_K(working_video)
-            self.proc.save_bbox_npz(bbox_npz_path, bbox_xyxy)
+            VideoProcessor.save_bbox_npz(bbox_npz_path, bbox_xyxy, detector_backend=backend)
             self.proc.save_camera_npz(camera_npz_path, K_all)
             _cb(progress_cb, 100, "Detection done (no tracks, full-image fallback)")
             return {"bbox_xyxy": bbox_xyxy, "K_all": K_all}
@@ -691,7 +699,8 @@ class V2MInferenceEngine:
                   f"({frame_end - frame_start} frames) / total {tracking_result.total_frames}")
 
         bbox_np = bbox_xyxy.detach().cpu().numpy().astype(np.float32)
-        save_kw = {"bbox": bbox_np, "start_end": np.array([0, bbox_np.shape[0]], dtype=np.int64)}
+        save_kw = {"bbox": bbox_np, "start_end": np.array([0, bbox_np.shape[0]], dtype=np.int64),
+                   "detector_backend": getattr(self.proc, "backend", "yolox")}
         if frame_range is not None:
             save_kw["frame_range"] = np.array(frame_range, dtype=np.int64)
         np.savez(bbox_npz_path, **save_kw)
@@ -889,13 +898,14 @@ class V2MInferenceEngine:
                       max_frames: int = None,
                       vggt_frame_interval: int = 1,
                       static_camera: bool = False,
+                      camera_backend: str = DEFAULT_CAMERA, detector_backend: str = None,
                       person_selector: Callable = None,
                       progress_callback: Callable[[StageName, int, str], None] = None,
                       cancel_check: Callable[[], None] = None,
                       sam_chunk_size: int = 16) -> str:
         """Video -> SMPL-H motion.
 
-        static_camera: skip VGGT and use a fixed pose with default intrinsics.
+        static_camera: skip camera estimation and use a fixed pose with default intrinsics.
         sam_chunk_size: frames per SAM body pass; both hands are batched together.
 
         person_selector: optional ``f(result, candidates, default) -> candidate index``,
@@ -920,23 +930,33 @@ class V2MInferenceEngine:
         os.makedirs(sub_dir, exist_ok=True)
 
         bbox_npz_path = os.path.join(sub_dir, f"{video_name}_bbox.npz")
-        feature_suffix = "_static" if static_camera else ""
-        camera_mode = "static" if static_camera else "vggt"
-        feat_pt_path = os.path.join(sub_dir, f"{video_name}_sam3d_feat{feature_suffix}.pt")
-        camera_npz_path = os.path.join(sub_dir, f"{video_name}_{camera_mode}_camera.npz")
+        camera_mode = "static" if static_camera else camera_backend
+        processor_backend = getattr(self.proc, "backend", "yolox")
+        detector_backend = detector_backend or processor_backend
+        if camera_mode not in CAMERA_WEIGHTS or detector_backend not in DETECTOR_WEIGHTS:
+            raise ValueError(f"Unknown perception backend: {detector_backend}, {camera_mode}")
+        proc = self.proc if detector_backend == processor_backend else VideoProcessor(
+            backend=detector_backend, device=self.device)
+        camera_suffix, feat_suffix = camera_cache_suffixes(camera_mode)
+        feat_pt_path = os.path.join(sub_dir, f"{video_name}_{feat_suffix}")
+        camera_npz_path = os.path.join(sub_dir, f"{video_name}_{camera_suffix}")
+        dependent_paths = tuple(os.path.join(sub_dir, f"{video_name}_{suffix}")
+                                for mode in CAMERA_WEIGHTS for suffix in camera_cache_suffixes(mode))
 
         print(f"\n  === Step 1: Bbox ===")
         _pcb(StageName.DETECTION, 0, "Starting bbox extraction")
 
+        bbox_cached = False
         if os.path.exists(bbox_npz_path):
+            with np.load(bbox_npz_path) as cached:
+                bbox_cached = _bbox_cache_matches(cached, detector_backend, inclusive=True)
+        working_video = proc.transcode(video_path, backup_dir=sub_dir, force_fps=30)
+        if bbox_cached:
             print(f"  [bbox] skip (exists): {bbox_npz_path}")
-            working_video = self.proc.transcode(video_path, backup_dir=sub_dir, force_fps=30)
             _pcb(StageName.DETECTION, 100, "Bbox cached")
         else:
-            working_video = self.proc.transcode(video_path, backup_dir=sub_dir, force_fps=30)
-            _pcb(StageName.DETECTION, 20, "Transcoded, detecting")
-
-            result = self.proc.detect_and_track(working_video)
+            _pcb(StageName.DETECTION, 20, f"Detecting with {detector_backend}")
+            result = proc.detect_and_track(working_video)
             _pcb(StageName.DETECTION, 60, f"Found {len(result.tracks)} person(s)")
 
             if not result.tracks:
@@ -970,20 +990,17 @@ class V2MInferenceEngine:
                       f"/ total={result.total_frames}")
             bbox_np, start_end = VideoProcessor.track_bboxes(result, track_idx)
 
-            np.savez(bbox_npz_path, bbox=bbox_np, start_end=start_end)
+            for path in dependent_paths:
+                if os.path.exists(path):
+                    os.remove(path)
+            np.savez(bbox_npz_path, bbox=bbox_np, start_end=start_end, detector_backend=detector_backend)
             print(f"  [bbox] saved -> {bbox_npz_path}  (shape={bbox_np.shape})")
             _pcb(StageName.DETECTION, 100, "Bbox done")
 
-        _limit_track_frames(
-            bbox_npz_path, max_frames,
-            dependent_paths=tuple(os.path.join(sub_dir, f"{video_name}_{suffix}") for suffix in (
-                "vggt_camera.npz", "static_camera.npz", "sam3d_feat.pt", "sam3d_feat_static.pt",
-            )),
-        )
+        _limit_track_frames(bbox_npz_path, max_frames, dependent_paths=dependent_paths)
 
-        # ==== Step 2: Camera ====
-        print(f"\n  === Step 2: {'Static' if static_camera else 'VGGT'} Camera ===")
-        _pcb(StageName.CAMERA, 0, "Using a static camera" if static_camera else "Starting VGGT camera extraction")
+        print(f"\n  === Step 2: {camera_mode} Camera ===")
+        _pcb(StageName.CAMERA, 0, f"Preparing {camera_mode} camera")
 
         with np.load(bbox_npz_path) as data:
             start_end_arr = data["start_end"].astype(np.int64)
@@ -995,11 +1012,16 @@ class V2MInferenceEngine:
         )
 
         camera_stamp = os.stat(camera_npz_path).st_mtime_ns if os.path.exists(camera_npz_path) else None
-        if static_camera:
+        if camera_mode == "static":
             meta = VideoProcessor.get_video_meta(working_video)
             camera_result = make_static_camera(
                 (meta.height, meta.width), frame_range=(s, e), output_npz=camera_npz_path,
             )
+        elif camera_mode in ("pi4", "simplevo"):
+            from flowhmr.utils.runtime_camera_backends import extract_camera
+            camera_result = extract_camera(working_video, camera_mode, output_npz=camera_npz_path,
+                                           frame_range=(s, e), device=self.device,
+                                           frame_interval=vggt_frame_interval)
         else:
             camera_result = extract_vggt_camera(
                 working_video,
@@ -1009,10 +1031,15 @@ class V2MInferenceEngine:
                 device=self.device,
                 frame_interval=vggt_frame_interval,
             )
-        if camera_stamp != os.stat(camera_npz_path).st_mtime_ns and os.path.exists(feat_pt_path):
-            os.remove(feat_pt_path)
-            print("  [sam] camera intrinsics changed, recomputing features")
-        _pcb(StageName.CAMERA, 100, "Static camera: estimation skipped" if static_camera else "VGGT camera ready")
+        current_stamp = os.stat(camera_npz_path).st_mtime_ns
+        if os.path.exists(feat_pt_path):
+            # A previous Pi4 run may have stopped just after replacing its legacy camera cache.
+            if camera_stamp != current_stamp or (
+                camera_mode == "pi4" and os.stat(feat_pt_path).st_mtime_ns < current_stamp
+            ):
+                os.remove(feat_pt_path)
+                print("  [sam] camera intrinsics changed, recomputing features")
+        _pcb(StageName.CAMERA, 100, f"{camera_mode} camera ready")
 
         # ==== Step 3: SAM feature extraction ====
         print(f"\n  === Step 3: SAM Feature ===")

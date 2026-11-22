@@ -56,8 +56,9 @@ Workflow: [inference.md](inference.md).
 | `--cfg_scale` | `1.0` | Classifier-free guidance scale; **CFG scale** in the Web Settings |
 | `--steps` | from config (`20` in the bundled config) | Override flow-matching ODE steps |
 | `--postprocess` | off | Enable RGBMocap contact planning and anatomical IK ([installation](install.md#optional-post-processing)) |
-| `--vggt_interval` | `1` | Run camera estimation on every N-th frame; applies only when static camera is off |
-| `--static_camera` | off | Skip VGGT and use a fixed camera with approximate intrinsics; no VGGT weights required |
+| `--detector` / `--camera` | `yolo26m` / `pi4` | Select the person detector and camera backend (see [inference](inference.md)) |
+| `--camera_interval` / `--vggt_interval` | `1` | Run VGGT or Pi4 on every N-th frame |
+| `--static_camera` | off | Use a fixed camera with approximate intrinsics |
 | `--sam_chunk_size` | `16` | Frames per SAM body batch; hand batch is automatically twice this size |
 | `--overwrite` | off | Recompute cached video preprocessing, detection, camera, and SAM features |
 
@@ -67,20 +68,20 @@ ambiguity when the launcher changes to the repository root.
 
 ```bash
 python run_v2m_demo_generation.py assets/example/example.mp4 \
-    --ckpt checkpoints/flowhmr_base/flowhmr_base.ckpt --vggt_interval 10
+    --ckpt checkpoints/flowhmr_base/flowhmr_base.ckpt --camera vggt --vggt_interval 10
 ```
 
 ## Camera settings
 
 For a fixed camera without camera motion or zoom, use CLI `--static_camera`
-or enable **Static camera** in the Web Settings. This skips VGGT entirely and
+or select **Static** under **Camera** in the Web Settings. This skips VGGT entirely and
 uses constant camera poses (identity relative rotation) with SAM's default
 approximate intrinsics: `fx = fy = sqrt(width² + height²)`, `cx = width / 2`,
 `cy = height / 2`. VGGT weights are not needed in this mode. Static and dynamic
 camera/SAM caches are stored separately.
 
-With static camera off, increase CLI `--vggt_interval` or Web **VGGT stride**
-to `10` or `30` to make VGGT-Omega process fewer frames and interpolate the camera
+For VGGT or Pi4, increase CLI `--camera_interval` or Web **Camera stride**
+to `10` or `30` to make the camera model process fewer frames and interpolate the camera
 between them. This can help with long videos or limited GPU memory, but camera
 motion is sampled less frequently; check the reconstruction quality for your
 input. The interval has no effect in static camera mode.
@@ -89,7 +90,7 @@ Other camera reconstruction approaches include
 [ViPE](https://github.com/nv-tlabs/vipe),
 [DA3-Streaming](https://github.com/ByteDance-Seed/Depth-Anything-3/tree/main/da3_streaming),
 and [DROID-SLAM](https://github.com/princeton-vl/DROID-SLAM). These require a
-separate integration; the current launchers use VGGT-Omega for dynamic cameras.
+separate integration; the launchers support VGGT-Omega, Pi4 and SimpleVO for dynamic cameras.
 
 ## Motion attention settings
 

@@ -43,7 +43,7 @@ export function initHistory({ onOpen, onRerun, onDeleted }) {
       const info = el("div", "run-info");
       info.append(el("div", "run-name", j.filename),
         el("div", "run-sub", j.recovered ? "Recovered from disk · settings unavailable"
-          : `${formatRelative(j.created, now)} · seed ${j.params.seed} · cfg ${j.params.cfg_scale} · ${j.params.static_camera ? "static camera" : "estimated camera"}`));
+          : `${formatRelative(j.created, now)} · seed ${j.params.seed} · cfg ${j.params.cfg_scale} · ${j.params.static_camera ? "static camera" : (j.params.camera ?? "vggt")}`));
       const tag = el("span", `badge ${j.status}`,
         j.status === "running" ? `${j.progress}%` : (STATUS_LABEL[j.status] || j.status));
       open.append(info, tag);

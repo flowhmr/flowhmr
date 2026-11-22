@@ -95,13 +95,25 @@
           </div>
           <button type="button" class="toggle" id="optManual" role="switch" aria-checked="true"><span class="toggle-knob"></span></button>
         </div>
-        <div class="setting-row">
-          <div>
-            <div class="setting-label">Static camera</div>
-            <div class="setting-help">For a stationary camera; skip camera motion estimation</div>
-          </div>
-          <button type="button" class="toggle" id="optStaticCamera" role="switch" aria-checked="false" aria-label="Static camera"><span class="toggle-knob"></span></button>
+        <div class="field-grid">
+          <label class="field">
+            <span>Person detector</span>
+            <select class="input" id="optDetector">
+              <option value="yolo26m">YOLO26m</option>
+              <option value="yolox">YOLOX-L</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Camera</span>
+            <select class="input" id="optCamera" aria-describedby="cameraMemoryHelp">
+              <option value="pi4">Pi4 · pose and intrinsics</option>
+              <option value="vggt">VGGT-Omega</option>
+              <option value="simplevo">SimpleVO · rotation only</option>
+              <option value="static">Static</option>
+            </select>
+          </label>
         </div>
+        <p class="setting-help" id="cameraMemoryHelp">If camera estimation runs out of GPU memory, select <strong>SimpleVO</strong> to estimate camera rotation on the CPU.</p>
         <div class="setting-row">
           <div>
             <div class="setting-label">Post-processing</div>
@@ -126,9 +138,9 @@
             <input class="input" id="optCfg" type="number" min="0" max="10" step="0.1" value="1.0">
           </label>
           <label class="field">
-            <span>VGGT stride</span>
+            <span>Camera stride</span>
             <input class="input" id="optVggt" type="number" min="1" max="120" step="1" value="1"
-                   title="Run VGGT-Omega on every N-th frame; use 10-30 for long videos or limited GPU memory">
+                   title="Run VGGT-Omega or π⁴ on every N-th frame; use 10-30 for long videos or limited GPU memory">
           </label>
           <label class="field">
             <span>Steps</span>
@@ -150,7 +162,7 @@
         <p class="setting-help settings-note">
           Auto frame detection uses the full video and may use more GPU memory. With it off, Max frames applies.<br>
           <span id="samChunkHelp">If SAM runs out of GPU memory, lower <strong>SAM chunk</strong> (16 → 8 → 4).</span><br>
-          For long videos or limited GPU memory, raise <strong>VGGT stride</strong> to 10–30
+          For long videos with Pi4 or VGGT-Omega, raise <strong>Camera stride</strong> to 10–30
           (the camera is interpolated between sampled frames).
         </p>
       </details>

@@ -5,7 +5,7 @@ Launch (from the repo root):
 then open http://<host>:8080
 
 Pipeline per job (runs on one GPU, jobs are queued):
-    transcode 30fps -> YOLOX detection + tracking -> VGGT-Omega camera
+    transcode 30fps -> person detection + tracking -> camera estimation
     -> SAM-3D-Body tokens -> FlowHMR flow-matching generation
 """
 import argparse
@@ -36,16 +36,19 @@ WEB_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(os.path.dirname(WEB_DIR))
 sys.path.insert(0, REPO_ROOT)
 
+from flowhmr.utils.perception_options import (
+    CAMERA_WEIGHTS, DEFAULT_CAMERA, DEFAULT_DETECTOR, DETECTOR_WEIGHTS, camera_cache_suffixes,
+)
+
 VIDEO_EXTS = {".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v"}
 STAGES = [
-    ("detection", "Detection", "YOLOX person detection & tracking"),
-    ("camera", "Camera", "VGGT-Omega camera estimation"),
+    ("detection", "Detection", "Person detection & tracking"),
+    ("camera", "Camera", "Camera estimation"),
     ("feature_extract", "Body features", "SAM-3D-Body feature extraction"),
     ("generation", "Generation", "FlowHMR flow-matching generation"),
 ]
 STAGE_INDEX = {name: i for i, (name, _, _) in enumerate(STAGES)}
 REQUIRED_FILES = [
-    "ckpts/yolox/yolox_l.pth",
     "ckpts/sam-3d-body-dinov3/model.ckpt",
     "ckpts/sam-3d-body-dinov3/assets/mhr_model.pt",
     "assets/body_models/smplh/neutral/model.npz",
@@ -102,7 +105,7 @@ def get_postprocess():
 # Defaults for the page's Settings card; everything is editable per run in the UI.
 DEFAULT_PARAMS = {
     "seed": 0, "cfg_scale": 1.0, "steps": 20, "max_frames": 900, "vggt_interval": 1,
-    "sam_chunk_size": 16,
+    "sam_chunk_size": 16, "detector": DEFAULT_DETECTOR, "camera": DEFAULT_CAMERA,
     "postprocess": False, "manual_select": True, "auto_frames": False, "static_camera": False,
 }
 
@@ -144,7 +147,24 @@ def parse_params(src, base=None):
             raise ValueError(f"{key} must be a positive integer")
         return value
 
+    def choice(key, options):
+        value = src.get(key, base[key])
+        if not isinstance(value, str) or value not in options:
+            raise ValueError(f"invalid {key}: {value!r}")
+        return value
+
+    camera = choice("camera", CAMERA_WEIGHTS)
+    if "static_camera" in src:
+        if _to_bool(src["static_camera"], False):
+            camera = "static"
+        elif camera == "static" and "camera" not in src:
+            camera = DEFAULT_CAMERA
+    elif "camera" not in src and base.get("static_camera"):
+        camera = "static"
+
     return {
+        "detector": choice("detector", DETECTOR_WEIGHTS),
+        "camera": camera,
         "seed": number("seed", int, 0, 2 ** 31 - 1),
         "cfg_scale": number("cfg_scale", float, 0.0, 10.0),
         "steps": number("steps", int, 1, 100),
@@ -154,7 +174,7 @@ def parse_params(src, base=None):
         "sam_chunk_size": positive_integer("sam_chunk_size"),
         "postprocess": _to_bool(src.get("postprocess"), base["postprocess"]),
         "manual_select": _to_bool(src.get("manual_select"), base.get("manual_select", True)),
-        "static_camera": _to_bool(src.get("static_camera"), base["static_camera"]),
+        "static_camera": camera == "static",
     }
 
 
@@ -205,7 +225,7 @@ def _legacy_job(job_id, directory):
                "start": created if done else None, "end": created if done else None}
               for i, (name, label, detail) in enumerate(STAGES)]
     return {
-        "id": job_id, "filename": f"Recovered run {job_id}", "params": default_params(),
+        "id": job_id, "filename": f"Recovered run {job_id}", "params": {},
         "recovered": True,
         "ext": os.path.splitext(input_name)[1], "status": status,
         "message": "Done" if done else "Recovered from an earlier session; detailed progress is unavailable.",
@@ -256,7 +276,10 @@ def restore_jobs():
                             0.0, interrupted_at - paused_at,
                         )
                     stage.update(status="cancelled" if cancelled else "failed", end=interrupted_at)
-        job["params"] = {**default_params(), **job.get("params", {})}
+        # Jobs written before backend selection used YOLOX and either VGGT or a fixed camera.
+        saved = job["params"]
+        job["params"] = {**default_params(), "detector": "yolox",
+                         "camera": "static" if saved.get("static_camera") else "vggt", **saved}
         job.setdefault("stages", [])
         with JOBS_LOCK:
             JOBS[job["id"]] = job
@@ -274,7 +297,9 @@ def new_job(filename, params, ext):
         "stages": [{"name": n, "label": l, "detail": d, "status": "pending", "progress": 0,
                     "start": None, "end": None} for n, l, d in STAGES],
     }
-    if params.get("static_camera", False):
+    job["stages"][STAGE_INDEX["detection"]]["detail"] = f"{params['detector']} person detection and tracking"
+    job["stages"][STAGE_INDEX["camera"]]["detail"] = f"{params['camera']} camera estimation"
+    if params.get("static_camera", False) or params["camera"] == "static":
         job["stages"][STAGE_INDEX["camera"]].update(
             label="Static camera", detail="Camera estimation skipped; fixed camera pose",
         )
@@ -422,6 +447,7 @@ def run_job(job_id):
         max_frames=None if params["auto_frames"] else params["max_frames"],
         vggt_frame_interval=params["vggt_interval"],
         static_camera=params.get("static_camera", False),
+        camera_backend=params["camera"], detector_backend=params["detector"],
         sam_chunk_size=params.get("sam_chunk_size", DEFAULT_PARAMS["sam_chunk_size"]),
         person_selector=select_person if params.get("manual_select", True) else None,
         progress_callback=on_progress,
@@ -605,21 +631,19 @@ def api_rerun(job_id):
         os.makedirs(dst_sub, exist_ok=True)
         skip = (f"{SUB}_seed",)  # generated motion is recomputed
         reselect = _to_bool(body.get("reselect_person"), False)
-        camera_changed = params["static_camera"] != src["params"].get("static_camera", False)
-        old_limit = None if src["params"].get("auto_frames", False) else src["params"]["max_frames"]
+        old = src["params"]
+        detector_changed = params["detector"] != old.get("detector", "yolox")
+        old_camera = "static" if old.get("static_camera") else old.get("camera", "vggt")
+        new_camera = "static" if params["static_camera"] else params["camera"]
+        old_limit = None if old.get("auto_frames") else old["max_frames"]
         new_limit = None if params["auto_frames"] else params["max_frames"]
-        range_changed = old_limit != new_limit
-        if reselect:
-            # per-person caches are invalidated so detection runs and the user picks again
+        if reselect or detector_changed:
             skip += (f"{SUB}_bbox.npz",)
-        if reselect or camera_changed or range_changed:
-            # SAM conditioning also depends on camera intrinsics, not just frame count.
-            skip += (f"{SUB}_sam3d_feat.pt", f"{SUB}_vggt_camera.npz",
-                     f"{SUB}_sam3d_feat_static.pt", f"{SUB}_static_camera.npz")
-        elif not params["static_camera"] and params["vggt_interval"] != src["params"]["vggt_interval"]:
-            skip += (f"{SUB}_sam3d_feat.pt", f"{SUB}_vggt_camera.npz")
-        if params["sam_chunk_size"] != src["params"].get("sam_chunk_size", DEFAULT_PARAMS["sam_chunk_size"]):
-            skip += (f"{SUB}_sam3d_feat.pt", f"{SUB}_sam3d_feat_static.pt")
+        if (reselect or detector_changed or old_camera != new_camera or old_limit != new_limit
+                or (new_camera in ("vggt", "pi4") and params["vggt_interval"] != old["vggt_interval"])):
+            skip += tuple(f"{SUB}_{suffix}" for mode in CAMERA_WEIGHTS for suffix in camera_cache_suffixes(mode))
+        if params["sam_chunk_size"] != old.get("sam_chunk_size", DEFAULT_PARAMS["sam_chunk_size"]):
+            skip += (f"{SUB}_sam3d_feat",)
         for name in os.listdir(src_sub):
             path = os.path.join(src_sub, name)
             if not name.startswith(skip) and os.path.isfile(path):

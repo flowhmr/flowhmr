@@ -9,6 +9,8 @@
 
 ## Overview
 
+- 🎥🎥🎥 [2026-11-22] Video inference now uses **YOLO26m** for person detection and **Pi4** for camera pose and intrinsics estimation by default.
+  If GPU memory is limited, choose **SimpleVO** to estimate camera rotation on the CPU.
 - 🎉🎉🎉 [2026-10-31] Our [Hugging Face demo](https://huggingface.co/spaces/fafsaf1/FlowHMR) is now live!
   Reconstruct and preview 3D motion in your browser, with NPZ/FBX export.
 - 🚀🚀🚀 [2026-10-30] Updated inference acceleration: approximately **10× faster SAM feature extraction**
@@ -51,7 +53,8 @@ FlowHMR supports two setups:
   Isaac Gym Preview 4, Python 3.8 + PyTorch 1.13, cu117). The two environments share no
   imports and communicate through files on `/dev/shm`.
 
-Some assets require license acceptance or gated access: the SMPL-family body models, VGGT-Omega, and SAM 3D Body.
+The default video setup uses YOLO26m and Pi4 and requires access to SAM 3D Body and the SMPL-H body model.
+VGGT-Omega requires separate access when selected.
 
 V2M:
 
@@ -81,8 +84,11 @@ Launch the FlowHMR web demo following docs/web_demo.md.
 [Inference guide](docs/inference.md)
 
 Reconstruct motion from a video on the command line. The pipeline runs person detection
-(YOLOX), camera estimation (VGGT-Omega), body feature extraction (SAM 3D Body), and
+(YOLO26m or YOLOX-L), camera estimation (Pi4, VGGT-Omega, SimpleVO, or a fixed pose), body feature extraction (SAM 3D Body), and
 FlowHMR, and saves the motion as `.npz` (plus `.fbx` if FBX export is installed).
+New runs use YOLO26m for person detection and Pi4 to estimate camera poses and intrinsics.
+Use `--detector yolox` for YOLOX-L or `--camera vggt` for VGGT-Omega.
+If camera estimation runs out of GPU memory, select **SimpleVO** (`--camera simplevo`) to estimate camera rotation on the CPU.
 
 ```text
 Run FlowHMR on my video following docs/inference.md.

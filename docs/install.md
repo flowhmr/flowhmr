@@ -18,10 +18,9 @@ Steps marked **[manual]** require license acceptance or account access and must 
 ## 1. Clone
 
 ```bash
-git clone --recursive https://github.com/flowhmr/flowhmr.git FlowHMR
+git clone https://github.com/flowhmr/flowhmr.git FlowHMR
 cd FlowHMR
-# in an existing clone:
-git submodule update --init --recursive
+git submodule update --init --recursive -- third_party/sam-3d-body
 ```
 
 ## 2. V2M environment
@@ -30,35 +29,45 @@ git submodule update --init --recursive
 conda create -n flowhmr python=3.10 -y
 conda activate flowhmr
 pip install -r requirements.txt -r tools/web/requirements.txt
-pip install --no-build-isolation --no-deps -e third_party/YOLOX
 ```
 
 Validated with Python 3.10, PyTorch 2.5.1, and CUDA driver ≥ 470. `requirements.txt` pins
-the cu118 build of torch and torchvision. YOLOX is installed with `--no-deps`; its runtime
-dependencies are listed in `tools/web/requirements.txt`, which keeps `numpy<2`. If you use a
-plain `venv` instead of conda, run `pip install wheel` before installing YOLOX.
+the cu118 build of torch and torchvision.
 
-Check: `python -c "import torch, yolox; print(torch.__version__, torch.cuda.is_available())"`
+Check: `python -c "import torch, ultralytics; print(torch.__version__, torch.cuda.is_available())"`
 prints `2.5.1+cu118 True`.
 
-**Perception checkpoints.** VGGT-Omega and SAM 3D Body are gated **[manual]**. Request
-access on [VGGT-Omega](https://huggingface.co/facebook/VGGT-Omega) and
+**Default detector and camera.** Install YOLO26m and Pi4 for video inference. The Pi4 setup
+script installs its camera code. The download commands below fetch the model weights.
+For the shared body feature extractor, request access to
 [SAM 3D Body](https://huggingface.co/facebook/sam-3d-body-dinov3), then run
 `huggingface-cli login`.
 
 ```bash
-mkdir -p ckpts/yolox
-wget -O ckpts/yolox/yolox_l.pth https://github.com/Megvii-BaseDetection/YOLOX/releases/download/0.1.1rc0/yolox_l.pth
-huggingface-cli download facebook/VGGT-Omega vggt_omega_1b_512.pt --local-dir ckpts/vggt-omega
+huggingface-cli download Ultralytics/YOLO26 yolo26m.pt --local-dir ckpts/yolo26m
+python tools/setup_pi4_camera.py
+huggingface-cli download yyfz233/Pi4 model.safetensors --local-dir ckpts/pi4
 huggingface-cli download facebook/sam-3d-body-dinov3 --local-dir ckpts/sam-3d-body-dinov3
 ```
 
 ```
 ckpts/
-├── yolox/yolox_l.pth
-├── vggt-omega/vggt_omega_1b_512.pt
+├── yolo26m/yolo26m.pt
+├── pi4/model.safetensors
 └── sam-3d-body-dinov3/{model.ckpt, model_config.yaml, assets/mhr_model.pt}
 ```
+
+### Optional detection and camera backends
+
+The default combination is YOLO26m with Pi4. Both the detector and camera can be
+selected independently. Existing YOLOX and VGGT installations can use the original
+pipeline with `--detector yolox --camera vggt`.
+
+| Backend | Preparation |
+|---|---|
+| YOLOX-L | Run `git submodule update --init --recursive -- third_party/YOLOX`, then `pip install --no-build-isolation --no-deps -e third_party/YOLOX`. Place [yolox_l.pth](https://github.com/Megvii-BaseDetection/YOLOX/releases/download/0.1.1rc0/yolox_l.pth) in `ckpts/yolox/`. |
+| VGGT-Omega | Run `git submodule update --init --recursive -- third_party/vggt-omega`. Request access to [VGGT-Omega](https://huggingface.co/facebook/VGGT-Omega) and download `vggt_omega_1b_512.pt` to `ckpts/vggt-omega/`. |
+| SimpleVO | If GPU memory is limited, use `--camera simplevo` to estimate camera rotation on the CPU. Install its optional dependency with `pip install pycolmap==3.12.6`. [GVHMR SimpleVO](https://github.com/zju3dv/GVHMR/tree/ee960bb6e2ea2d381aa97f08e9b71ef320b624b1/hmr4d/utils/preproc/relpose) |
 
 **Optional: FBX export** (verified on Python 3.10 only). Without it, `.npz` results are
 still saved and the `.fbx` export is skipped.
@@ -91,6 +100,7 @@ Uses RGBMocap's **normal**, **flat ground**, **automatic floor**, **foot lock on
 **Apply the PHC+ patches** once:
 
 ```bash
+git submodule update --init --recursive -- third_party/PerpetualHumanoidControl
 cd third_party/PerpetualHumanoidControl
 git apply ../patches/*.patch
 cd ../..
@@ -181,10 +191,11 @@ If Google Drive rate-limits the download, fetch the files manually from the PHC 
 ### 4.3 FlowHMR checkpoints
 
 ```bash
-huggingface-cli download fafsaf1/flowhmr-0.46B --local-dir checkpoints
-# or only the recommended model:
 huggingface-cli download fafsaf1/flowhmr-0.46B --include "flowhmr_latest/*" "config.json" --local-dir checkpoints
 ```
+
+For training or inference with the base checkpoint, also download it with
+`huggingface-cli download fafsaf1/flowhmr-0.46B --include "flowhmr_base/*" --local-dir checkpoints`.
 
 ```
 checkpoints/
@@ -210,9 +221,8 @@ python run_v2m_demo_generation.py assets/example/example.mp4
 
 Expected: the log ends with `=== Done | ok=1 failed=0 ===` and the script writes
 `output/example/flowhmr_latest.npz` (`poses (T, 52, 3)`, `trans (T, 3)`). If any
-checkpoint or body model is missing, the script lists it and exits. With the default
-`--vggt_interval 1`, this example peaks at about 30 GB of GPU memory (measured on an A100 40GB);
-on smaller GPUs add `--vggt_interval 10` (see [params.md](params.md)).
+checkpoint or body model is missing, the script lists it and exits. On smaller GPUs,
+use `--camera_interval 10` to sample fewer frames (see [params.md](params.md)).
 
 ### 5.2 Web demo
 

@@ -13,9 +13,11 @@ import torch
 from torch import Tensor
 
 
+from flowhmr.utils.perception_options import DEFAULT_DETECTOR, DETECTOR_WEIGHTS
+
+
 # Repo root (for locating checkpoints)
 _repo_root = osp.normpath(osp.join(osp.dirname(__file__), "..", ".."))
-_YOLOX_CKPT_PATH = osp.join(_repo_root, "ckpts", "yolox", "yolox_l.pth")
 
 
 def find_ffmpeg() -> str:
@@ -64,6 +66,8 @@ class TrackingResult:
 # YOLOXHumanDetector
 class YOLOXHumanDetector:
     """YOLOX-based human detector, drop-in replacement for the old detectron2 HumanDetector."""
+
+    backend = "yolox"
 
     def __init__(self, ckpt_path: str, device: torch.device, test_size: tuple = (640, 640)):
         import sys as _sys
@@ -127,18 +131,56 @@ class YOLOXHumanDetector:
         return result
 
 
-def build_human_detector(device: torch.device) -> YOLOXHumanDetector:
-    """Build YOLOX-L human detector. Raises FileNotFoundError if weights missing."""
-    if not osp.exists(_YOLOX_CKPT_PATH):
-        raise FileNotFoundError(f"YOLOX checkpoint not found: {_YOLOX_CKPT_PATH}")
-    return YOLOXHumanDetector(ckpt_path=_YOLOX_CKPT_PATH, device=device)
+class UltralyticsHumanDetector:
+    backend = "yolo26m"
+
+    def __init__(self, ckpt_path, device):
+        from ultralytics import YOLO
+
+        self.model = YOLO(ckpt_path, task="detect")
+        self.device = device
+
+    def run_human_detection(self, img, det_cat_id=0, bbox_thr=0.5, nms_thr=0.3,
+                            default_to_full_image=True):
+        result = self.model.predict(img, classes=[det_cat_id], conf=bbox_thr, iou=nms_thr,
+                                    imgsz=640, device=self.device, verbose=False)[0]
+        if len(result.boxes):
+            boxes = torch.cat((result.boxes.xyxy, result.boxes.conf[:, None]), dim=1)
+            return boxes.cpu().numpy().astype(np.float32)
+        if default_to_full_image:
+            height, width = img.shape[:2]
+            return np.array([[0, 0, width, height, 1]], dtype=np.float32)
+        return None
+
+
+def build_human_detector(device: torch.device, backend=DEFAULT_DETECTOR):
+    path = osp.join(_repo_root, DETECTOR_WEIGHTS[backend])
+    if not osp.isfile(path):
+        raise FileNotFoundError(f"{backend} checkpoint not found: {path}")
+    detector = YOLOXHumanDetector if backend == "yolox" else UltralyticsHumanDetector
+    return detector(path, device)
 
 
 class VideoProcessor:
     """Standalone video processing: transcode, detect+track, camera K, etc."""
 
-    def __init__(self, detector: YOLOXHumanDetector):
-        self.detector = detector
+    def __init__(self, detector=None, *, backend=None, device=None):
+        self._detector = detector
+        if backend is None:
+            backend = DEFAULT_DETECTOR if detector is None else getattr(detector, "backend", "yolox")
+        self.backend = backend
+        self.device = device
+
+    @property
+    def detector(self):
+        if self._detector is None:
+            self._detector = build_human_detector(self.device, self.backend)
+        return self._detector
+
+    @detector.setter
+    def detector(self, value):
+        self._detector = value
+        self.backend = getattr(value, "backend", self.backend)
 
     # Static helpers
     @staticmethod
@@ -448,9 +490,10 @@ class VideoProcessor:
 
     # I/O helpers (static)
     @staticmethod
-    def save_bbox_npz(bbox_npz_path: str, bbox_xyxy: Tensor) -> None:
+    def save_bbox_npz(bbox_npz_path: str, bbox_xyxy: Tensor, *, detector_backend="yolox") -> None:
         bbox = bbox_xyxy.detach().cpu().numpy().astype(np.float32)
-        np.savez(bbox_npz_path, bbox=bbox, start_end=np.array([0, bbox.shape[0]], dtype=np.int64))
+        np.savez(bbox_npz_path, bbox=bbox, start_end=np.array([0, bbox.shape[0]], dtype=np.int64),
+                 detector_backend=detector_backend)
 
     @staticmethod
     def save_camera_npz(camera_npz_path: str, K_all: Tensor) -> None:
@@ -473,7 +516,7 @@ if __name__ == "__main__":
     print(f"[video_meta] {meta.width}x{meta.height}, {meta.fps:.1f}fps, {meta.total_frames} frames")
 
     # 2. Build detector
-    print(f"[detector] YOLOX ckpt: {_YOLOX_CKPT_PATH}")
+    print(f"[detector] {DEFAULT_DETECTOR} checkpoint: {DETECTOR_WEIGHTS[DEFAULT_DETECTOR]}")
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     detector = build_human_detector(device)
     print(f"[detector] OK on {device}")

@@ -13,7 +13,7 @@ and saved result path, or explain any remaining blockers.
 
 ## What the demo does
 
-Upload a video to run person detection and tracking → VGGT-Omega camera
+Upload a video to run person detection and tracking → Pi4 camera
 estimation → SAM-3D-Body features → FlowHMR motion generation. The page shows
 the reconstructed SMPL-H motion in a 3D viewer beside the input video.
 
@@ -21,7 +21,7 @@ the reconstructed SMPL-H motion in a 3D viewer beside the input video.
   <img src="../assets/web_demo.png" alt="FlowHMR web demo: input video with the selected person, settings, and the reconstructed 3D motion" width="100%">
 </p>
 
-- **Settings per run**: seed, CFG scale, ODE steps, max frames / automatic full video, VGGT stride,
+- **Settings per run**: seed, CFG scale, ODE steps, max frames / automatic full video, Camera stride,
   static camera, SAM chunk and post-processing are set in the collapsible Settings card.
 - **Person selection**: when more than one person is detected and *Manual person
   selection* is on, the job pauses after detection. Pick the target person from the
@@ -52,8 +52,8 @@ The default checkpoint is `checkpoints/flowhmr_latest/flowhmr_latest.ckpt`.
 After the log prints `FlowHMR web demo ready`, open `http://localhost:8080`
 on the same machine, or `http://<host>:8080` when connecting remotely.
 The page queues jobs on the selected GPU.
-VGGT loads on the first job that needs camera estimation; it is not preloaded
-at startup. Static-camera jobs do not require its weights.
+New jobs default to YOLO26m and Pi4. Select **YOLOX-L** or **VGGT-Omega** to reuse
+an earlier setup. Recovered jobs retain their original backend choices.
 
 ## Verify a run
 
@@ -73,13 +73,13 @@ Changing the chunk size on re-run recomputes SAM
 features while retaining matching detection and camera caches.
 If SAM runs out of GPU memory, lower **SAM chunk**, e.g. `16` → `8` → `4`.
 
-For a fixed camera without camera motion or zoom, enable **Static camera**
-(off by default). It skips VGGT and uses a constant pose with SAM's default
+Choose the detector and camera backend in **Settings**. For a fixed camera, select **Static**. It skips VGGT and uses a constant pose with SAM's default
 approximate intrinsics.
 
-For long videos or limited GPU memory, increase **VGGT stride** (e.g. `10` or `30`)
+For long videos or limited GPU memory, increase **Camera stride** (e.g. `10` or `30`)
 so camera estimation processes fewer frames and interpolates in between. This
-setting applies only when **Static camera** is off.
+setting applies to VGGT-Omega and Pi4. If camera estimation runs out of GPU memory,
+select **Settings → Camera → SimpleVO**. It estimates camera rotation on the CPU every eight frames.
 
 Optional acceleration is configured before starting the service:
 

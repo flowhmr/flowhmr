@@ -18,8 +18,10 @@ environment commands live in [install.md](install.md).
 | Resource | Expected location |
 |---|---|
 | FlowHMR base / latest | `checkpoints/<name>/<name>.ckpt` and sibling `config.yml` |
-| YOLOX detector | `ckpts/yolox/yolox_l.pth` |
-| VGGT-Omega camera model | `ckpts/vggt-omega/vggt_omega_1b_512.pt` |
+| YOLO26m detector (default) | `ckpts/yolo26m/yolo26m.pt` |
+| Pi4 camera model (default) | `ckpts/pi4/model.safetensors` |
+| YOLOX detector (optional) | `ckpts/yolox/yolox_l.pth` |
+| VGGT-Omega camera model (optional) | `ckpts/vggt-omega/vggt_omega_1b_512.pt` |
 | SAM-3D-Body | `ckpts/sam-3d-body-dinov3/` with `model.ckpt`, `model_config.yaml`, and `assets/mhr_model.pt` |
 | PHC composite controller | `output/HumanoidIm/phc_comp_3/Humanoid.pth` |
 | PHC MCP controller | `output/HumanoidIm/phc_3/Humanoid.pth` |

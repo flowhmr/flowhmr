@@ -487,7 +487,7 @@ if __name__ == "__main__":
     print(f"[video_meta] {meta.width}x{meta.height}, {meta.fps:.1f}fps, {meta.total_frames} frames")
 
     # 2. Compute bboxes via VideoProcessor
-    print("[bbox] Building YOLOX detector...")
+    print("[bbox] Building person detector...")
     detector = build_human_detector(device)
     proc = VideoProcessor(detector=detector)
     bbox_xyxy = proc.compute_bboxes(video_path)

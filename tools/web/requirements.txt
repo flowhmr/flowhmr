@@ -1,8 +1,11 @@
-# Perception stack for raw-video inference (CLI + web demo). Install on top of ../requirements.txt:
+# Perception stack for raw-video inference (CLI + web demo). Run from the repository root:
 #   pip install -r requirements.txt -r tools/web/requirements.txt
-#   pip install --no-build-isolation --no-deps -e third_party/YOLOX
+# Default detector/camera: YOLO26m and Pi4. Optional backends: see docs/install.md.
 flask>=3.0
 imageio-ffmpeg>=0.5        # bundled ffmpeg (used when no system ffmpeg is on PATH)
+
+safetensors               # Pi4 camera checkpoint
+ultralytics==8.4.216       # YOLO26m person detection
 
 # person detection + tracking (YOLOX runtime deps; YOLOX itself is installed with --no-deps)
 supervision>=0.25,<0.31    # ByteTrack is removed in 0.31

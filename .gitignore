@@ -35,3 +35,6 @@ __pycache__/
 .vscode/
 .idea/
 .DS_Store
+
+.venv/
+third_party/pi4_camera/

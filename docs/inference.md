@@ -23,8 +23,10 @@ python run_v2m_demo_generation.py a.mp4 b.mov my_videos/
 | `--seed` | `0` | Random seed |
 | `--cfg_scale` | `1.0` | Guidance scale |
 | `--steps` | model config (`20`) | Sampling steps |
-| `--static_camera` | off | Skip VGGT for a fixed camera |
-| `--vggt_interval` | `1` | Estimate camera every N frames; ignored with `--static_camera` |
+| `--detector` | `yolo26m` | Person detector: `yolo26m` or `yolox`, followed by ByteTrack |
+| `--camera` | `pi4` | Camera backend: `vggt`, `pi4`, `simplevo`, or `static` |
+| `--static_camera` | off | Alias for `--camera static` |
+| `--camera_interval` / `--vggt_interval` | `1` | Sample every N frames with VGGT or Pi4 and interpolate the tracked frames |
 | `--sam_chunk_size` | `16` | Frames per SAM body batch; hand batch is automatically twice this size |
 | `--postprocess` | off | Enable RGBMocap contact planning and anatomical IK ([installation](install.md#optional-post-processing)) |
 | `--overwrite` | off | Recompute cached preprocessing and features |
@@ -33,9 +35,28 @@ python run_v2m_demo_generation.py a.mp4 b.mov my_videos/
 # Fixed camera
 python run_v2m_demo_generation.py video.mp4 --static_camera
 
-# Moving camera, sampled every 10 frames
-python run_v2m_demo_generation.py video.mp4 --vggt_interval 10 --steps 20 --cfg_scale 1.0
+# Original detection and camera backends, sampled every 10 frames
+python run_v2m_demo_generation.py video.mp4 --detector yolox --camera vggt --vggt_interval 10 --steps 20 --cfg_scale 1.0
 ```
+
+YOLO26m and YOLOX-L detect the COCO person class. Pi4 estimates camera poses and metric translation
+scale. It fits focal lengths and principal points to its two predicted ray channels on each
+sampled frame. SAM uses these intrinsics in original-image pixels, with linear interpolation
+between sampled frames. This path skips the depth output, depth refinement, point clouds and tracking.
+SimpleVO follows GVHMR's half-resolution SIFT matching and
+calibrated two-view estimation every eight frames, including the final frame. It
+interpolates rotations, sets translation to zero and uses a 24 mm full-frame focal prior.
+FlowHMR conditions on camera rotations relative to the first tracked frame.
+
+```bash
+python run_v2m_demo_generation.py video.mp4 --detector yolo26m --camera pi4 --camera_interval 8
+# If camera estimation runs out of GPU memory, estimate camera rotation on the CPU.
+python run_v2m_demo_generation.py video.mp4 --camera simplevo
+```
+
+The Web Settings expose the same **Person detector** and **Camera** choices. Each CLI
+run updates the standard checkpoint-named motion file and keeps a backend-named copy
+for comparisons, e.g. `flowhmr_latest_yolox_vggt.npz`.
 
 ## Acceleration
 
