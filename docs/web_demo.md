@@ -35,8 +35,7 @@ the reconstructed SMPL-H motion in a 3D viewer beside the input video.
 - Run history and results persist in `output/web_jobs/` across server restarts.
 - **Stop / Cancel**: stop a running job or cancel a queued job from the page.
 
-This is the **self-hosted** demo. The hosted Hugging Face demo is listed separately
-in the [overview](../README.md#overview).
+For the hosted Hugging Face demo, see [How to Use FlowHMR](../README.md#how-to-use-flowhmr).
 
 ## Launch
 

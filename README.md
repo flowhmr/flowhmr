@@ -7,7 +7,7 @@
 <a href="https://huggingface.co/fafsaf1/flowhmr-0.46B"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Model-blue" alt="Hugging Face Model"></a>
 </div>
 
-## Overview
+## News
 
 - 🎥🎥🎥 [2026-11-22] Video inference now uses **YOLO26m** for person detection and **Pi4** for camera pose and intrinsics estimation by default.
   If GPU memory is limited, choose **SimpleVO** to estimate camera rotation on the CPU.
@@ -16,16 +16,15 @@
 - 🚀🚀🚀 [2026-10-30] Updated inference acceleration: approximately **10× faster SAM feature extraction**
   (with compile) and **over 5× faster end-to-end inference** (static camera, with compile) on our 300-frame A100 benchmark.
   See the [resource and performance report](docs/performance.md).
-  Get started with [CLI inference](docs/inference.md) or the [Web demo](docs/web_demo.md).
 
-We are releasing the full workflow, from data synthesis to training and evaluation, step by step.
+## How to Use FlowHMR
 
-- [x] Inference code and checkpoints ([guide](docs/inference.md), [models](#model-zoo))
-- [x] Pretraining and GRPO post-training code ([guide](docs/training.md))
-- [x] Web demo ([guide](docs/web_demo.md))
-- [x] Synthetic data generation code ([guide](data/rendering_data/README.md))
-- [x] Wild-4K evaluation clip list ([list](data/wild4k/README.md))
-- [x] Hugging Face demo ([Space](https://huggingface.co/spaces/fafsaf1/FlowHMR))
+- 💻 **CLI** — Process a video or a folder of videos from the terminal. [Inference guide](docs/inference.md) · [Model checkpoints](#model-zoo)
+- 🌐 **Web (local)** — Run the web app on your machine to select a person in a video and preview their 3D motion. [Web demo guide](docs/web_demo.md)
+- 🤗 **Hugging Face** — Upload a video and preview its motion in your browser without a local installation. [Open the hosted demo](https://huggingface.co/spaces/fafsaf1/FlowHMR)
+- 🧩 **Windows extensions** — Thanks to [@toyxyz](https://github.com/toyxyz) for [toyxyz_RGBMocap](https://github.com/toyxyz/toyxyz_RGBMocap) and [@xiaoerofficial021-collab](https://github.com/xiaoerofficial021-collab) for [FlowHMR-Windows](https://github.com/xiaoerofficial021-collab/FlowHMR-Windows).
+
+**Training and evaluation** — [Synthetic data generation](data/rendering_data/README.md) · [Pretraining and GRPO post-training](docs/training.md) · [Wild-4K evaluation clip list](data/wild4k/README.md)
 
 ## Model Zoo
 
