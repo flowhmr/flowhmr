@@ -5,7 +5,7 @@
 <a href="https://arxiv.org/abs/2610.03691"><img src="https://img.shields.io/badge/arXiv-2610.03691-b31b1b" alt="arXiv"></a>
 <a href="https://flowhmr.github.io/"><img src="https://img.shields.io/badge/Project_Page-FlowHMR-green" alt="Project Page"></a>
 <a href="https://huggingface.co/fafsaf1/flowhmr-0.46B"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Model-blue" alt="Hugging Face Model"></a>
-<a href="https://modelscope.cn/models/zkwang2001/flowhmr"><img src="https://img.shields.io/badge/ModelScope-Model-blue" alt="ModelScope Model"></a>
+<a href="https://modelscope.cn/models/zkwang2001/flowhmr"><img src="https://img.shields.io/badge/ModelScope-Model-blue?logo=modelscope&amp;logoColor=white" alt="ModelScope Model"></a>
 </div>
 
 ## News
